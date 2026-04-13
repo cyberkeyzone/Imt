@@ -1,112 +1,130 @@
 return function(WindUI, TeleportTab)
     local Players = game:GetService("Players")
     local lp = Players.LocalPlayer
-    local GetPlayerList = loadstring(game:HttpGet("https://raw.githubusercontent.com/cyberkeyzone/Imt/refs/heads/main/getplayerlist.lua"))().GetPlayerList
 
+    -- ==========================================
+    -- DATABASE CACHE (AUTO-INTERCEPTOR)
+    -- ==========================================
+    local CPCache = {} 
+    local CPList = {}  
+    local selectedCP = ""
+    local CPDropdown
+
+    -- Fungsi untuk mengupdate UI Dropdown tanpa perlu klik apapun
+    local function UpdateDropdown()
+        CPList = {}
+        for name, _ in pairs(CPCache) do
+            table.insert(CPList, name)
+        end
+        
+        -- Mengurutkan nama CP agar rapi (CP 1, CP 2, CP 10, dst)
+        table.sort(CPList, function(a, b)
+            local numA = tonumber(string.match(a, "%d+"))
+            local numB = tonumber(string.match(b, "%d+"))
+            if numA and numB then return numA < numB end
+            return a < b
+        end)
+        
+        if #CPList == 0 then table.insert(CPList, "Belum ada CP terdeteksi") end
+        
+        if CPDropdown then
+            pcall(function() CPDropdown:Refresh(CPList) end)
+        end
+    end
+
+    -- Fungsi Intelijen untuk mendeteksi apakah objek itu Checkpoint
+    local function ProcessPart(part)
+        if not part:IsA("BasePart") then return end
+        
+        local parentName = part.Parent and part.Parent.Name or ""
+        local partName = part.Name
+        local isCP = false
+        
+        -- Deteksi dari nama folder induk
+        local folders = {"Checkpoints", "Stages", "CheckPoints", "stages", "Spawns"}
+        for _, f in ipairs(folders) do
+            if parentName == f then isCP = true break end
+        end
+        
+        -- Deteksi dari nama part-nya langsung
+        if string.match(string.lower(partName), "checkpoint") or string.match(string.lower(partName), "stage") then
+            isCP = true
+        end
+        
+        -- Deteksi jika dev gamenya malas (cuma namain part dengan angka 1, 2, 3)
+        if tonumber(partName) and (isCP or parentName == "Workspace") then
+            isCP = true
+        end
+
+        if isCP then
+            local cpName = partName
+            if tonumber(cpName) then cpName = "CP " .. cpName end
+            
+            -- Jika CP baru ditemukan, simpan diam-diam dan update UI
+            if not CPCache[cpName] then
+                CPCache[cpName] = part.CFrame + Vector3.new(0, 3, 0)
+                UpdateDropdown()
+            end
+        end
+    end
+
+    -- ==========================================
+    -- BYPASS STREAMING ENABLED ENGINE
+    -- ==========================================
+    -- 1. Deep Scan: Scan seluruh area yang sudah dirender saat ini
+    for _, part in ipairs(workspace:GetDescendants()) do
+        pcall(function() ProcessPart(part) end)
+    end
+
+    -- 2. Auto-Hook: Menangkap Checkpoint yang baru saja dikirim server tanpa henti
+    workspace.DescendantAdded:Connect(function(part)
+        pcall(function() ProcessPart(part) end)
+    end)
+
+    -- ==========================================
+    -- UI ELEMENTS (WIND UI)
+    -- ==========================================
     TeleportTab:Paragraph({
-        Title = "Navigasi Server",
-        Desc = "Teleport ke pemain lain atau lompat antar Checkpoint/Stage.",
-        Color = Color3.fromHex("#0F7BFF")
+        Title = "Teleport (Auto-Bypass Stream)",
+        Desc = "Sistem secara otomatis menangkap koordinat Checkpoint di belakang layar seiring kamu bergerak. Daftar akan bertambah sendiri tanpa perlu Refresh!",
+        Color = Color3.fromHex("#F89B29")
     })
 
-    -- Bagian Teleport Player
-    local selectedTargetPlayer = ""
-    local PlayerDropdown = TeleportTab:Dropdown({
-        Title = "Dari Player (Daftar Pemain)",
-        Values = GetPlayerList(),
-        Value = "Pilih Pemain",
+    CPDropdown = TeleportTab:Dropdown({
+        Title = "📍 Pilih Checkpoint",
+        Values = CPList,
+        Value = "Pilih CP",
         SearchBarEnabled = true,
         Callback = function(opt)
-            selectedTargetPlayer = type(opt) == "table" and opt.Title or opt
-        end
-    })
-
-    TeleportTab:Button({
-        Title = "Refresh Daftar Pemain",
-        Icon = "refresh-cw",
-        Callback = function()
-            PlayerDropdown:Refresh(GetPlayerList())
-            WindUI:Notify({Title="Refresh", Content="Daftar pemain diperbarui", Duration=1})
-        end
-    })
-
-    TeleportTab:Button({
-        Title = "Teleport ke Pemain",
-        Icon = "navigation",
-        Callback = function()
-            if selectedTargetPlayer == "" or selectedTargetPlayer == "Pilih Pemain" then return WindUI:Notify({Title="Error", Content="Pilih pemain terlebih dahulu!"}) end
-            
-            local targetName = string.match(selectedTargetPlayer, "@([^%)]+)") or selectedTargetPlayer
-            local targetPlr = Players:FindFirstChild(targetName)
-            
-            if targetPlr and targetPlr.Character and targetPlr.Character:FindFirstChild("HumanoidRootPart") and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-                lp.Character.HumanoidRootPart.CFrame = targetPlr.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3) 
-                WindUI:Notify({Title="Teleportasi", Content="Berhasil TP ke " .. targetName, Duration=1.5, Icon="check"})
-            else
-                WindUI:Notify({Title="Gagal", Content="Karakter pemain tidak ditemukan!", Duration=2})
-            end
+            selectedCP = type(opt) == "table" and opt.Title or opt
         end
     })
 
     TeleportTab:Divider()
 
-    -- Bagian Teleport Checkpoint/Stage
-    local CheckpointMap = {}
-    local selectedCheckpoint = ""
-
-    local function ScanCheckpoints()
-        CheckpointMap = {}
-        local list = {}
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj:IsA("SpawnLocation") then
-                local uidName = string.format("Spawn: %s [%d, %d]", obj.Name, math.floor(obj.Position.X), math.floor(obj.Position.Z))
-                CheckpointMap[uidName] = obj.CFrame
-                table.insert(list, uidName)
-            elseif obj:IsA("BasePart") then
-                local nameLower = obj.Name:lower()
-                local parentLower = obj.Parent and obj.Parent.Name:lower() or ""
-                if nameLower:match("checkpoint") or nameLower:match("stage") or nameLower == "cp" or
-                   parentLower:match("checkpoint") or parentLower:match("stage") or parentLower:match("spawns") then
-                    local uidName = string.format("CP: %s [%d, %d]", obj.Name, math.floor(obj.Position.X), math.floor(obj.Position.Z))
-                    CheckpointMap[uidName] = obj.CFrame
-                    table.insert(list, uidName)
-                end
+    TeleportTab:Button({
+        Title = "⚡ Teleport ke Checkpoint",
+        Callback = function()
+            if selectedCP == "" or selectedCP == "Pilih CP" or selectedCP == "Belum ada CP terdeteksi" then
+                return WindUI:Notify({Title="Error", Content="Pilih Checkpoint terlebih dahulu!", Duration=2, Icon="x"})
             end
-        end
-        table.sort(list)
-        if #list == 0 then table.insert(list, "Tidak ada Checkpoint/Spawn") end
-        return list
-    end
 
-    local CheckpointDropdown = TeleportTab:Dropdown({
-        Title = "Deteksi Checkpoint / Stage",
-        Values = {"Klik Refresh dulu"},
-        Value = "Kosong",
-        SearchBarEnabled = true,
-        Callback = function(opt)
-            selectedCheckpoint = type(opt) == "table" and opt.Title or opt
-        end
-    })
-
-    TeleportTab:Button({
-        Title = "Refresh Checkpoint Area",
-        Icon = "radar",
-        Callback = function()
-            WindUI:Notify({Title="Scanning...", Content="Mencari Spawn/Stage di workspace", Duration=1})
-            local cps = ScanCheckpoints()
-            CheckpointDropdown:Refresh(cps)
-        end
-    })
-
-    TeleportTab:Button({
-        Title = "Teleport ke Checkpoint",
-        Icon = "map",
-        Callback = function()
-            if selectedCheckpoint == "" or not CheckpointMap[selectedCheckpoint] then return WindUI:Notify({Title="Error", Content="Pilih Checkpoint yang valid!"}) end
+            local char = lp.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
             
-            if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-                lp.Character.HumanoidRootPart.CFrame = CheckpointMap[selectedCheckpoint] + Vector3.new(0, 4, 0)
-                WindUI:Notify({Title="Teleportasi", Content="Berhasil TP ke Checkpoint", Duration=1.5, Icon="check"})
+            if hrp then
+                local targetCFrame = CPCache[selectedCP]
+                if targetCFrame then
+                    -- Memaksa server merender map tempat kita akan mendarat
+                    pcall(function() lp:RequestStreamAroundAsync(targetCFrame.Position) end)
+                    
+                    hrp.CFrame = targetCFrame
+                    WindUI:Notify({Title="Zhoosh!", Content="Teleport ke " .. selectedCP, Duration=1.5})
+                else
+                    WindUI:Notify({Title="Error", Content="Data kordinat CP rusak/hilang.", Duration=2})
+                end
+            else
+                WindUI:Notify({Title="Gagal", Content="Karaktermu belum spawn!", Duration=2})
             end
         end
     })
