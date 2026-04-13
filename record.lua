@@ -522,12 +522,11 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- 🕒 RENDER-STEPPED PLAYBACK (ULTRA SMOOTH)
+    -- 🕒 RENDER-STEPPED PLAYBACK (ULTRA SMOOTH & ANTI-JITTER)
     -- ==========================================
     local function StartPlaybackLoop(data)
         if playConn then playConn:Disconnect() end
         
-        -- Menggunakan RenderStepped untuk visual yg super mulus terbebas dari lag physics
         playConn = RunService.RenderStepped:Connect(function()
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -536,16 +535,27 @@ return function(WindUI, RecordingTab)
             if not hrp or not hum then return end
 
             if isAutoWalkingToStart then
+                -- Karakter bebas bergerak menuju rute rekaman
+                hrp.Anchored = false
+                hum.AutoRotate = true
+
                 local targetPos = data[playbackIndex].cframe.Position
                 local dist = (hrp.Position - targetPos).Magnitude
                 if dist > 3 then
                     hum:MoveTo(targetPos)
                     StatusLbl.Text = string.format(" AutoWalk: %d Studs", math.floor(dist))
                 else
+                    -- Rute tercapai, Bekukan fisika dan matikan autorotate untuk memutar frame mulus
                     isAutoWalkingToStart = false 
                     playbackStartTime = os.clock() - (data[playbackIndex].time or 0)
+                    hrp.Anchored = true
+                    hum.AutoRotate = false
                 end
             else
+                -- Mencegah fisika roblox bertabrakan dengan interpolasi script
+                hrp.Anchored = true
+                hum.AutoRotate = false
+
                 local t = os.clock() - playbackStartTime
                 
                 while data[playbackIndex + 1] and t >= data[playbackIndex + 1].time do
@@ -556,16 +566,19 @@ return function(WindUI, RecordingTab)
                 local nextFrame = data[playbackIndex + 1]
 
                 if nextFrame then
-                    -- LERP ENGINE (Anti-Lag Interpolation)
+                    -- LERP ENGINE
                     local timeDiff = nextFrame.time - currentFrame.time
                     if timeDiff <= 0 then timeDiff = 0.001 end
-                    
                     local alpha = math.clamp((t - currentFrame.time) / timeDiff, 0, 1)
                     
                     hrp.CFrame = currentFrame.cframe:Lerp(nextFrame.cframe, alpha)
+                    
+                    -- Inject velocity ke physics engine walau anchored agar Animasi Roblox tetap aktif
                     hrp.AssemblyLinearVelocity = currentFrame.vel:Lerp(nextFrame.vel, alpha)
+                    
                     if hum:GetState() ~= currentFrame.state then hum:ChangeState(currentFrame.state) end
                     
+                    -- Trigger Animasi Paksa
                     local moveDir = (nextFrame.cframe.Position - currentFrame.cframe.Position)
                     local flatMoveDir = Vector3.new(moveDir.X, 0, moveDir.Z) 
                     if flatMoveDir.Magnitude > 0.01 then hum:Move(flatMoveDir.Unit, false) 
@@ -575,7 +588,10 @@ return function(WindUI, RecordingTab)
                     StatusLbl.Text = string.format(" ▶ %d%%", percent)
                     SliderFill.Size = UDim2.new(playbackIndex / #data, 0, 1, 0)
                 else
+                    -- Selesai Putar
                     if playConn then playConn:Disconnect() end
+                    hrp.Anchored = false
+                    hum.AutoRotate = true
                     hum:Move(Vector3.zero, false) 
                     hum:ChangeState(Enum.HumanoidStateType.Running)
                     hrp.AssemblyLinearVelocity = Vector3.zero
@@ -613,10 +629,15 @@ return function(WindUI, RecordingTab)
         if not isPaused then
             isPaused = true
             if playConn then playConn:Disconnect() end
+            
             local char = lp.Character
-            if char and char:FindFirstChildOfClass("Humanoid") then
-                char:FindFirstChildOfClass("Humanoid"):Move(Vector3.zero, false)
+            if char then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.Anchored = true end -- Bekukan karakter saat editor aktif
+                if hum then hum:Move(Vector3.zero, false) end
             end
+            
             StatusLbl.Text = " ⏸️ Editor"
             UpdatePanelUI()
         else
@@ -624,7 +645,6 @@ return function(WindUI, RecordingTab)
             StatusLbl.Text = " ▶️ Resumed"
             UpdatePanelUI()
             
-            -- Resync waktu menggunakan presisi tinggi os.clock
             playbackStartTime = os.clock() - (data[playbackIndex].time or 0)
             StartPlaybackLoop(data)
         end
@@ -633,7 +653,15 @@ return function(WindUI, RecordingTab)
     StopBtn.MouseButton1Click:Connect(function()
         if playConn then playConn:Disconnect() end
         local char = lp.Character
-        if char and char:FindFirstChildOfClass("Humanoid") then char:FindFirstChildOfClass("Humanoid"):Move(Vector3.zero, false) end
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.Anchored = false end
+            if hum then 
+                hum.AutoRotate = true
+                hum:Move(Vector3.zero, false) 
+            end
+        end
         
         countdownActive = false 
         isPlaying = false
@@ -704,11 +732,13 @@ return function(WindUI, RecordingTab)
         -- KUNCI TRANSI MULUS: Bekukan (Anchor) karakter selama hitung mundur!
         task.spawn(function()
             hrp.Anchored = true
+            hum.AutoRotate = false
             hrp.CFrame = data[playbackIndex].cframe
 
             for i = 2, 1, -1 do
                 if not countdownActive then 
                     hrp.Anchored = false
+                    hum.AutoRotate = true
                     return 
                 end 
                 StatusLbl.Text = string.format(" ⏳ Siap Gerak... %d", i)
@@ -717,19 +747,21 @@ return function(WindUI, RecordingTab)
 
             if not countdownActive then 
                 hrp.Anchored = false
+                hum.AutoRotate = true
                 return 
             end
             
             countdownActive = false
             StatusLbl.Text = " 🔴 Merekam Sambungan..."
 
-            -- Lepaskan anchor dan kembalikan momentum (velocity) 100% ke kondisi asli sebelum mulai rekam ulang
+            -- Lepaskan perlahan anchor dan auto rotate lalu mulai record
             hrp.Anchored = false
+            hum.AutoRotate = true
+            
             hrp.CFrame = data[playbackIndex].cframe
             hrp.AssemblyLinearVelocity = data[playbackIndex].vel
             hum:ChangeState(data[playbackIndex].state)
 
-            -- Sinkronkan waktu saat menyambung record agar Lerp tidak error/lompat
             recordingStartTime = os.clock() - (data[playbackIndex].time or 0)
 
             recConn = RunService.Heartbeat:Connect(function()
