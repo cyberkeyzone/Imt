@@ -6,7 +6,7 @@ return function(WindUI, RecordingTab)
     local TweenService = game:GetService("TweenService")
     local CoreGui = game:GetService("CoreGui")
     local lp = Players.LocalPlayer
-    local currentPlaceId = game.PlaceId -- Ambil Place ID saat ini
+    local currentPlaceId = game.PlaceId 
 
     -- ==========================================
     -- VARIABEL SISTEM & STATE
@@ -28,26 +28,27 @@ return function(WindUI, RecordingTab)
     local playConn = nil
     local playbackIndex = 1
     local appendTargetFile = nil 
+    
+    -- Variabel Mesin Waktu (Anti-Lag)
+    local recordingStartTime = 0
+    local playbackStartTime = 0
 
     local folderName = "Recording"
     if isfolder and not isfolder(folderName) then makefolder(folderName) end
 
     -- ==========================================
-    -- FUNGSI INTERNAL DATA (UPDATE STRUKTUR JSON)
+    -- FUNGSI INTERNAL DATA (Dengan Timestamp)
     -- ==========================================
-    
-    -- Format JSON Baru: Menyimpan PlaceId dan Array Frames
     local function SerializeData(framesArray)
         local serializedFrames = {}
         for i, frame in ipairs(framesArray) do
             serializedFrames[i] = {
+                time = frame.time, -- Simpan Timestamp untuk Anti-Lag
                 cframe = {frame.cframe:GetComponents()},
                 vel = {frame.vel.X, frame.vel.Y, frame.vel.Z},
                 state = frame.state.Name 
             }
         end
-        
-        -- Bungkus dengan PlaceId
         return {
             PlaceId = tostring(currentPlaceId),
             Frames = serializedFrames
@@ -56,12 +57,11 @@ return function(WindUI, RecordingTab)
 
     local function DeserializeData(jsonData)
         local deserializedFrames = {}
-        
-        -- Support untuk format lama (hanya array) dan format baru (object dengan PlaceId)
         local framesToProcess = jsonData.Frames or jsonData
         
         for i, frame in ipairs(framesToProcess) do
             deserializedFrames[i] = {
+                time = frame.time or (i * 0.016), -- Fallback ke 60 FPS jika JSON lama
                 cframe = CFrame.new(unpack(frame.cframe)),
                 vel = Vector3.new(unpack(frame.vel)),
                 state = Enum.HumanoidStateType[frame.state]
@@ -146,7 +146,6 @@ return function(WindUI, RecordingTab)
     local uiParent = (gethui and gethui()) or (pcall(function() return CoreGui.Name end) and CoreGui) or lp.PlayerGui
     FloatingUI.Parent = uiParent
 
-    -- Main Frame (Kapsul)
     local MainFrame = Instance.new("Frame")
     MainFrame.Size = UDim2.new(0, 250, 0, 75) 
     MainFrame.Position = UDim2.new(0.5, -125, 0.8, -80)
@@ -170,7 +169,7 @@ return function(WindUI, RecordingTab)
     MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
     MainLayout.Parent = MainFrame
 
-    -- ROW 1: Controls & Drag Handle
+    -- ROW 1: Controls
     local Row1 = Instance.new("Frame")
     Row1.Size = UDim2.new(1, 0, 0, 40)
     Row1.BackgroundTransparency = 1
@@ -271,7 +270,7 @@ return function(WindUI, RecordingTab)
     Instance.new("UICorner", DelBtn).CornerRadius = UDim.new(0, 6)
     DelBtn.Parent = Row2
 
-    -- ROW 3: Editor Slider & Save Button
+    -- ROW 3: Editor Slider
     local Row3 = Instance.new("Frame")
     Row3.Size = UDim2.new(1, 0, 0, 75) 
     Row3.BackgroundTransparency = 1
@@ -328,7 +327,7 @@ return function(WindUI, RecordingTab)
     SaveEditBtn.Parent = Row3
 
     -- ==========================================
-    -- LOGIKA ANIMASI & DYNAMIC SIZING
+    -- LOGIKA ANIMASI PANEL
     -- ==========================================
     local function UpdateFileUI()
         if #availableRecords == 0 then
@@ -403,7 +402,7 @@ return function(WindUI, RecordingTab)
     end
 
     -- ==========================================
-    -- LOGIKA DRAG & TOGGLE
+    -- LOGIKA DRAG & TOGGLE PANEL
     -- ==========================================
     local isDragging = false
     local dragStart, startPos
@@ -439,7 +438,7 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- LOGIKA FUNGSI (FILE MANAGER)
+    -- LOGIKA FILE MANAGER
     -- ==========================================
     PrevBtn.MouseButton1Click:Connect(function()
         if #availableRecords > 0 then
@@ -470,7 +469,7 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- LOGIKA RECORD & OVERWRITE PINTAR
+    -- 🕒 TIME-BASED RECORDING ENGINE (ANTI-LAG)
     -- ==========================================
     RecBtn.MouseButton1Click:Connect(function()
         if not isRecording then
@@ -478,6 +477,8 @@ return function(WindUI, RecordingTab)
             isRecording = true
             countdownActive = false
             currentRecordingFrames = {}
+            recordingStartTime = tick() -- Mulai hitung waktu
+            
             StatusLbl.Text = " Merekam..."
             UpdatePanelUI()
 
@@ -485,8 +486,10 @@ return function(WindUI, RecordingTab)
                 local char = lp.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 local hum = char and char:FindFirstChildOfClass("Humanoid")
+                
                 if hrp and hum then
                     table.insert(currentRecordingFrames, {
+                        time = tick() - recordingStartTime, -- Simpan waktu spesifik saat frame ini ter-capture
                         cframe = hrp.CFrame,
                         vel = hrp.AssemblyLinearVelocity,
                         state = hum:GetState() 
@@ -519,10 +522,11 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- LOGIKA PLAYBACK
+    -- 🕒 TIME-BASED PLAYBACK ENGINE (SMOOTH LERP)
     -- ==========================================
     local function StartPlaybackLoop(data)
         if playConn then playConn:Disconnect() end
+        
         playConn = RunService.Heartbeat:Connect(function()
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -538,28 +542,41 @@ return function(WindUI, RecordingTab)
                     StatusLbl.Text = string.format(" AutoWalk: %d Studs", math.floor(dist))
                 else
                     isAutoWalkingToStart = false 
+                    playbackStartTime = tick() - (data[playbackIndex].time or 0)
                 end
             else
-                if data[playbackIndex] then
-                    local currentData = data[playbackIndex]
-                    local nextData = data[playbackIndex + 1]
+                local t = tick() - playbackStartTime
+                
+                -- Cari frame yang sesuai dengan waktu (t) saat ini
+                while data[playbackIndex + 1] and t >= data[playbackIndex + 1].time do
+                    playbackIndex = playbackIndex + 1
+                end
+
+                local currentFrame = data[playbackIndex]
+                local nextFrame = data[playbackIndex + 1]
+
+                if nextFrame then
+                    -- LERP ENGINE: Interpolasi agar super smooth meski file rekaman dari device lag
+                    local timeDiff = nextFrame.time - currentFrame.time
+                    if timeDiff <= 0 then timeDiff = 0.001 end
                     
-                    hrp.CFrame = currentData.cframe
-                    hrp.AssemblyLinearVelocity = currentData.vel
-                    if hum:GetState() ~= currentData.state then hum:ChangeState(currentData.state) end
+                    local alpha = math.clamp((t - currentFrame.time) / timeDiff, 0, 1)
                     
-                    if nextData then
-                        local moveDir = (nextData.cframe.Position - currentData.cframe.Position)
-                        local flatMoveDir = Vector3.new(moveDir.X, 0, moveDir.Z) 
-                        if flatMoveDir.Magnitude > 0.02 then hum:Move(flatMoveDir.Unit, false) 
-                        else hum:Move(Vector3.zero, false) end
+                    hrp.CFrame = currentFrame.cframe:Lerp(nextFrame.cframe, alpha)
+                    hrp.AssemblyLinearVelocity = currentFrame.vel:Lerp(nextFrame.vel, alpha)
+                    if hum:GetState() ~= currentFrame.state then hum:ChangeState(currentFrame.state) end
+                    
+                    -- Trigger Animasi Jalan
+                    local moveDir = (nextFrame.cframe.Position - currentFrame.cframe.Position)
+                    local flatMoveDir = Vector3.new(moveDir.X, 0, moveDir.Z) 
+                    if flatMoveDir.Magnitude > 0.02 then hum:Move(flatMoveDir.Unit, false) 
                     else hum:Move(Vector3.zero, false) end
 
                     local percent = math.floor((playbackIndex / #data) * 100)
                     StatusLbl.Text = string.format(" ▶ %d%%", percent)
                     SliderFill.Size = UDim2.new(playbackIndex / #data, 0, 1, 0)
-                    playbackIndex = playbackIndex + 1
                 else
+                    -- Selesai Playback
                     if playConn then playConn:Disconnect() end
                     hum:Move(Vector3.zero, false) 
                     hum:ChangeState(Enum.HumanoidStateType.Running)
@@ -608,6 +625,9 @@ return function(WindUI, RecordingTab)
             isPaused = false
             StatusLbl.Text = " ▶️ Resumed"
             UpdatePanelUI()
+            
+            -- Resync waktu agar tidak melompat karena di-pause
+            playbackStartTime = tick() - (data[playbackIndex].time or 0)
             StartPlaybackLoop(data)
         end
     end)
@@ -698,9 +718,13 @@ return function(WindUI, RecordingTab)
             countdownActive = false
             StatusLbl.Text = " 🔴 Merekam Sambungan..."
 
+            -- Sinkronkan waktu saat menyambung record agar Lerp tidak error
+            recordingStartTime = tick() - (data[playbackIndex].time or 0)
+
             recConn = RunService.Heartbeat:Connect(function()
                 if hrp and hum then
                     table.insert(currentRecordingFrames, {
+                        time = tick() - recordingStartTime,
                         cframe = hrp.CFrame,
                         vel = hrp.AssemblyLinearVelocity,
                         state = hum:GetState() 
