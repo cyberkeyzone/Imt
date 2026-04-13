@@ -270,7 +270,7 @@ return function(WindUI, RecordingTab)
     Instance.new("UICorner", DelBtn).CornerRadius = UDim.new(0, 6)
     DelBtn.Parent = Row2
 
-    -- ROW 3: Editor Slider
+    -- ROW 3: Editor Slider & Save Button
     local Row3 = Instance.new("Frame")
     Row3.Size = UDim2.new(1, 0, 0, 75) 
     Row3.BackgroundTransparency = 1
@@ -469,7 +469,7 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- 🕒 RECORDING ENGINE (OS.CLOCK PRESISI)
+    -- 🕒 RECORDING ENGINE (OS.CLOCK)
     -- ==========================================
     RecBtn.MouseButton1Click:Connect(function()
         if not isRecording then
@@ -522,12 +522,14 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- 🕒 RENDER-STEPPED PLAYBACK (ULTRA SMOOTH & ANTI-JITTER)
+    -- 🕒 STEPPED PLAYBACK ENGINE (SUPER SMOOTH)
+    -- Mencegah Jitter Fisika & Glitch Kepala
     -- ==========================================
     local function StartPlaybackLoop(data)
         if playConn then playConn:Disconnect() end
         
-        playConn = RunService.RenderStepped:Connect(function()
+        -- Menggunakan Stepped untuk Bypass Physics Engine
+        playConn = RunService.Stepped:Connect(function()
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid") 
@@ -535,27 +537,18 @@ return function(WindUI, RecordingTab)
             if not hrp or not hum then return end
 
             if isAutoWalkingToStart then
-                -- Karakter bebas bergerak menuju rute rekaman
-                hrp.Anchored = false
-                hum.AutoRotate = true
-
+                -- Fase Auto-Walk: Bergerak normal pakai physics bawaan
                 local targetPos = data[playbackIndex].cframe.Position
                 local dist = (hrp.Position - targetPos).Magnitude
                 if dist > 3 then
                     hum:MoveTo(targetPos)
                     StatusLbl.Text = string.format(" AutoWalk: %d Studs", math.floor(dist))
                 else
-                    -- Rute tercapai, Bekukan fisika dan matikan autorotate untuk memutar frame mulus
                     isAutoWalkingToStart = false 
                     playbackStartTime = os.clock() - (data[playbackIndex].time or 0)
-                    hrp.Anchored = true
-                    hum.AutoRotate = false
                 end
             else
-                -- Mencegah fisika roblox bertabrakan dengan interpolasi script
-                hrp.Anchored = true
-                hum.AutoRotate = false
-
+                -- Fase Playback: Injeksi CFrame & Velocity Murni
                 local t = os.clock() - playbackStartTime
                 
                 while data[playbackIndex + 1] and t >= data[playbackIndex + 1].time do
@@ -566,33 +559,26 @@ return function(WindUI, RecordingTab)
                 local nextFrame = data[playbackIndex + 1]
 
                 if nextFrame then
-                    -- LERP ENGINE
+                    -- LERP ENGINE (Menghaluskan transisi antar frame)
                     local timeDiff = nextFrame.time - currentFrame.time
                     if timeDiff <= 0 then timeDiff = 0.001 end
                     local alpha = math.clamp((t - currentFrame.time) / timeDiff, 0, 1)
                     
+                    -- SET CFRAME & VELOCITY (Tanpa Anchored, tanpa hum:Move())
+                    -- Hal ini membuat Roblox Engine menganggap karakter sedang berlari natural!
                     hrp.CFrame = currentFrame.cframe:Lerp(nextFrame.cframe, alpha)
-                    
-                    -- Inject velocity ke physics engine walau anchored agar Animasi Roblox tetap aktif
                     hrp.AssemblyLinearVelocity = currentFrame.vel:Lerp(nextFrame.vel, alpha)
                     
-                    if hum:GetState() ~= currentFrame.state then hum:ChangeState(currentFrame.state) end
-                    
-                    -- Trigger Animasi Paksa
-                    local moveDir = (nextFrame.cframe.Position - currentFrame.cframe.Position)
-                    local flatMoveDir = Vector3.new(moveDir.X, 0, moveDir.Z) 
-                    if flatMoveDir.Magnitude > 0.01 then hum:Move(flatMoveDir.Unit, false) 
-                    else hum:Move(Vector3.zero, false) end
+                    -- Sinkronisasi State (Jumping, Falling, Running)
+                    if hum:GetState() ~= currentFrame.state then 
+                        hum:ChangeState(currentFrame.state) 
+                    end
 
                     local percent = math.floor((playbackIndex / #data) * 100)
                     StatusLbl.Text = string.format(" ▶ %d%%", percent)
                     SliderFill.Size = UDim2.new(playbackIndex / #data, 0, 1, 0)
                 else
-                    -- Selesai Putar
                     if playConn then playConn:Disconnect() end
-                    hrp.Anchored = false
-                    hum.AutoRotate = true
-                    hum:Move(Vector3.zero, false) 
                     hum:ChangeState(Enum.HumanoidStateType.Running)
                     hrp.AssemblyLinearVelocity = Vector3.zero
                     
@@ -632,10 +618,8 @@ return function(WindUI, RecordingTab)
             
             local char = lp.Character
             if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
                 local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.Anchored = true end -- Bekukan karakter saat editor aktif
-                if hum then hum:Move(Vector3.zero, false) end
+                if hrp then hrp.Anchored = true end -- Bekukan agar mudah diedit
             end
             
             StatusLbl.Text = " ⏸️ Editor"
@@ -644,6 +628,12 @@ return function(WindUI, RecordingTab)
             isPaused = false
             StatusLbl.Text = " ▶️ Resumed"
             UpdatePanelUI()
+            
+            local char = lp.Character
+            if char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.Anchored = false end -- Lepas bekuan saat resume
+            end
             
             playbackStartTime = os.clock() - (data[playbackIndex].time or 0)
             StartPlaybackLoop(data)
@@ -654,13 +644,8 @@ return function(WindUI, RecordingTab)
         if playConn then playConn:Disconnect() end
         local char = lp.Character
         if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if hrp then hrp.Anchored = false end
-            if hum then 
-                hum.AutoRotate = true
-                hum:Move(Vector3.zero, false) 
-            end
         end
         
         countdownActive = false 
@@ -729,16 +714,14 @@ return function(WindUI, RecordingTab)
         
         countdownActive = true
         
-        -- KUNCI TRANSI MULUS: Bekukan (Anchor) karakter selama hitung mundur!
+        -- Bekukan selama persiapan rekam sambungan
         task.spawn(function()
             hrp.Anchored = true
-            hum.AutoRotate = false
             hrp.CFrame = data[playbackIndex].cframe
 
             for i = 2, 1, -1 do
                 if not countdownActive then 
                     hrp.Anchored = false
-                    hum.AutoRotate = true
                     return 
                 end 
                 StatusLbl.Text = string.format(" ⏳ Siap Gerak... %d", i)
@@ -747,21 +730,19 @@ return function(WindUI, RecordingTab)
 
             if not countdownActive then 
                 hrp.Anchored = false
-                hum.AutoRotate = true
                 return 
             end
             
             countdownActive = false
             StatusLbl.Text = " 🔴 Merekam Sambungan..."
 
-            -- Lepaskan perlahan anchor dan auto rotate lalu mulai record
+            -- Lepaskan anchor agar physics roblox mengambil alih murni
             hrp.Anchored = false
-            hum.AutoRotate = true
-            
             hrp.CFrame = data[playbackIndex].cframe
             hrp.AssemblyLinearVelocity = data[playbackIndex].vel
             hum:ChangeState(data[playbackIndex].state)
 
+            -- Resync Start Time agar hitungan frame mulus
             recordingStartTime = os.clock() - (data[playbackIndex].time or 0)
 
             recConn = RunService.Heartbeat:Connect(function()
