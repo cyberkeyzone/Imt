@@ -103,10 +103,10 @@ return function(WindUI, RecordingTab)
     end
 
     -- ==========================================
-    -- CUSTOM FLOATING UI (WIDGET & PANEL)
+    -- CUSTOM FLOATING UI (HORIZONTAL DESIGN)
     -- ==========================================
     local FloatingUI = Instance.new("ScreenGui")
-    FloatingUI.Name = "SYNC_RecordPanel"
+    FloatingUI.Name = "SYNC_RecordPanel_Horizontal"
     FloatingUI.ResetOnSpawn = false
     FloatingUI.Enabled = false
     
@@ -116,199 +116,173 @@ return function(WindUI, RecordingTab)
     -- 1. Widget Button (Lingkaran)
     local WidgetBtn = Instance.new("TextButton")
     WidgetBtn.Size = UDim2.new(0, 50, 0, 50)
-    WidgetBtn.Position = UDim2.new(0.5, -25, 0.1, 0)
+    WidgetBtn.Position = UDim2.new(0.5, -25, 0.05, 0)
     WidgetBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
     WidgetBtn.Text = "🎬"
     WidgetBtn.TextSize = 24
     WidgetBtn.Parent = FloatingUI
     
-    local WidgetCorner = Instance.new("UICorner")
-    WidgetCorner.CornerRadius = UDim.new(1, 0)
-    WidgetCorner.Parent = WidgetBtn
-    
+    Instance.new("UICorner", WidgetBtn).CornerRadius = UDim.new(1, 0)
     local WidgetStroke = Instance.new("UIStroke")
     WidgetStroke.Color = Color3.fromRGB(41, 248, 155)
     WidgetStroke.Thickness = 2
     WidgetStroke.Parent = WidgetBtn
 
-    -- 2. Main Panel
+    -- 2. Main Panel (Horizontal)
     local MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 250, 0, 340)
-    MainFrame.Position = UDim2.new(0.5, -125, 0.5, -170)
+    MainFrame.Size = UDim2.new(0, 480, 0, 80) -- Ukuran default ramping
+    MainFrame.Position = UDim2.new(0.5, -240, 0.8, -80)
     MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
     MainFrame.BorderSizePixel = 0
-    MainFrame.Visible = false -- Default tersembunyi, dibuka via widget
+    MainFrame.Visible = false 
+    MainFrame.ClipsDescendants = true
     MainFrame.Parent = FloatingUI
 
-    local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(0, 12)
-    UICorner.Parent = MainFrame
-
+    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
     local UIStroke = Instance.new("UIStroke")
     UIStroke.Color = Color3.fromRGB(41, 248, 155)
     UIStroke.Thickness = 1.5
     UIStroke.Parent = MainFrame
 
-    -- Header Panel
+    -- Header / Drag Area
     local HeaderFrame = Instance.new("Frame")
-    HeaderFrame.Size = UDim2.new(1, 0, 0, 40)
+    HeaderFrame.Size = UDim2.new(1, 0, 0, 30)
     HeaderFrame.BackgroundTransparency = 1
     HeaderFrame.Parent = MainFrame
 
     local TitleLbl = Instance.new("TextLabel")
-    TitleLbl.Size = UDim2.new(1, -40, 1, 0)
+    TitleLbl.Size = UDim2.new(0, 150, 1, 0)
     TitleLbl.Position = UDim2.new(0, 15, 0, 0)
     TitleLbl.BackgroundTransparency = 1
     TitleLbl.Text = "Studio Recording"
     TitleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
     TitleLbl.Font = Enum.Font.GothamBold
-    TitleLbl.TextSize = 16
+    TitleLbl.TextSize = 14
     TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
     TitleLbl.Parent = HeaderFrame
 
-    local CloseBtnUI = Instance.new("TextButton")
-    CloseBtnUI.Size = UDim2.new(0, 40, 0, 40)
-    CloseBtnUI.Position = UDim2.new(1, -40, 0, 0)
-    CloseBtnUI.BackgroundTransparency = 1
-    CloseBtnUI.Text = "✖"
-    CloseBtnUI.TextColor3 = Color3.fromRGB(255, 80, 80)
-    CloseBtnUI.Font = Enum.Font.GothamBold
-    CloseBtnUI.TextSize = 16
-    CloseBtnUI.Parent = HeaderFrame
+    local StatusLbl = Instance.new("TextLabel")
+    StatusLbl.Size = UDim2.new(1, -170, 1, 0)
+    StatusLbl.Position = UDim2.new(0, 160, 0, 0)
+    StatusLbl.BackgroundTransparency = 1
+    StatusLbl.Text = "Status: Menunggu file..."
+    StatusLbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+    StatusLbl.Font = Enum.Font.Gotham
+    StatusLbl.TextSize = 12
+    StatusLbl.TextXAlignment = Enum.TextXAlignment.Right
+    StatusLbl.Parent = HeaderFrame
 
-    local Divider = Instance.new("Frame")
-    Divider.Size = UDim2.new(1, 0, 0, 1)
-    Divider.Position = UDim2.new(0, 0, 1, 0)
-    Divider.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-    Divider.BorderSizePixel = 0
-    Divider.Parent = HeaderFrame
-
-    -- Drag Logic untuk Widget (dengan deteksi Klik vs Drag)
-    local dragStart, startPos
-    local draggingWidget = false
-    local isMoved = false
+    -- Logika Input Sempurna untuk Widget (Klik vs Drag)
+    local isDraggingWidget = false
+    local widgetDragStart, widgetStartPos
 
     WidgetBtn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            draggingWidget = true
-            isMoved = false
-            dragStart = input.Position
-            startPos = WidgetBtn.Position
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    draggingWidget = false
-                    -- Jika pergerakan mouse < 5 pixel, hitung sebagai Klik (Toggle Panel)
-                    if not isMoved then
-                        MainFrame.Visible = not MainFrame.Visible
-                    end
-                end
-            end)
+            isDraggingWidget = true
+            widgetDragStart = input.Position
+            widgetStartPos = WidgetBtn.Position
         end
     end)
 
-    -- Drag Logic untuk Main Frame (di Header)
-    local draggingFrame = false
-    local frameStartPos, frameDragStart
+    WidgetBtn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDraggingWidget = false
+            -- Deteksi apakah ini klik murni atau drag
+            local delta = input.Position - widgetDragStart
+            if delta.Magnitude < 5 then
+                MainFrame.Visible = not MainFrame.Visible -- Tampilkan/Sembunyikan Panel
+            end
+        end
+    end)
+
+    -- Logika Input untuk Drag MainFrame (Horizontal Panel)
+    local isDraggingFrame = false
+    local frameDragStart, frameStartPos
+
     HeaderFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            draggingFrame = true
+            isDraggingFrame = true
             frameDragStart = input.Position
             frameStartPos = MainFrame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then draggingFrame = false end
-            end)
         end
     end)
 
+    HeaderFrame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDraggingFrame = false
+        end
+    end)
+
+    -- Global Input Changed untuk smooth drag
     UserInputService.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            if draggingWidget then
-                local delta = input.Position - dragStart
-                if delta.Magnitude > 5 then isMoved = true end
-                if isMoved then
-                    WidgetBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-                end
-            elseif draggingFrame then
+            if isDraggingWidget then
+                local delta = input.Position - widgetDragStart
+                WidgetBtn.Position = UDim2.new(widgetStartPos.X.Scale, widgetStartPos.X.Offset + delta.X, widgetStartPos.Y.Scale, widgetStartPos.Y.Offset + delta.Y)
+            elseif isDraggingFrame then
                 local delta = input.Position - frameDragStart
                 MainFrame.Position = UDim2.new(frameStartPos.X.Scale, frameStartPos.X.Offset + delta.X, frameStartPos.Y.Scale, frameStartPos.Y.Offset + delta.Y)
             end
         end
     end)
 
-    CloseBtnUI.MouseButton1Click:Connect(function()
-        MainFrame.Visible = false
-    end)
-
-    -- Content Area (Layouting)
-    local ContentFrame = Instance.new("Frame")
-    ContentFrame.Size = UDim2.new(1, -20, 1, -55)
-    ContentFrame.Position = UDim2.new(0, 10, 0, 50)
-    ContentFrame.BackgroundTransparency = 1
-    ContentFrame.Parent = MainFrame
+    -- Container Tombol Horizontal
+    local BtnContainer = Instance.new("Frame")
+    BtnContainer.Size = UDim2.new(1, -20, 0, 35)
+    BtnContainer.Position = UDim2.new(0, 10, 0, 35)
+    BtnContainer.BackgroundTransparency = 1
+    BtnContainer.Parent = MainFrame
 
     local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.FillDirection = Enum.FillDirection.Horizontal
+    UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    UIListLayout.Padding = UDim.new(0, 8)
-    UIListLayout.Parent = ContentFrame
+    UIListLayout.Padding = UDim.new(0, 10)
+    UIListLayout.Parent = BtnContainer
 
-    local StatusLbl = Instance.new("TextLabel")
-    StatusLbl.Size = UDim2.new(1, 0, 0, 35)
-    StatusLbl.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
-    StatusLbl.Text = "Status: Menunggu file..."
-    StatusLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
-    StatusLbl.Font = Enum.Font.Gotham
-    StatusLbl.TextSize = 12
-    StatusLbl.TextWrapped = true
-    StatusLbl.LayoutOrder = 1
-    StatusLbl.Parent = ContentFrame
-    Instance.new("UICorner", StatusLbl).CornerRadius = UDim.new(0, 6)
-
-    -- Helper untuk membuat tombol custom
-    local function CreateButton(text, color, order)
+    local function CreateButton(text, color, width, order)
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 0, 38)
+        btn.Size = UDim2.new(0, width, 1, 0)
         btn.BackgroundColor3 = color
         btn.Text = text
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 14
+        btn.TextSize = 12
         btn.LayoutOrder = order
-        btn.Parent = ContentFrame
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+        btn.Parent = BtnContainer
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
         return btn
     end
 
-    local RecBtn = CreateButton("🔴 Mulai Record", Color3.fromRGB(220, 50, 50), 2)
-    local PlayPanelBtn = CreateButton("▶️ Play Selected File", Color3.fromRGB(40, 130, 230), 3)
-    local PausePanelBtn = CreateButton("⏸️ Pause", Color3.fromRGB(220, 160, 40), 4)
-    local StopPanelBtn = CreateButton("⏹️ Stop Playback", Color3.fromRGB(180, 60, 60), 5)
+    local RecBtn = CreateButton("🔴 Record", Color3.fromRGB(220, 50, 50), 100, 1)
+    local PlayPanelBtn = CreateButton("▶️ Play", Color3.fromRGB(40, 130, 230), 100, 2)
+    local PausePanelBtn = CreateButton("⏸️ Pause", Color3.fromRGB(220, 160, 40), 100, 3)
+    local StopPanelBtn = CreateButton("⏹️ Stop", Color3.fromRGB(180, 60, 60), 100, 4)
     
-    -- ADVANCED SLIDER UI (Hanya muncul saat Pause)
-    local SliderContainer = Instance.new("Frame")
-    SliderContainer.Size = UDim2.new(1, 0, 0, 55)
-    SliderContainer.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
-    SliderContainer.LayoutOrder = 6
-    SliderContainer.Visible = false
-    SliderContainer.Parent = ContentFrame
-    Instance.new("UICorner", SliderContainer).CornerRadius = UDim.new(0, 8)
+    -- EDITOR CONTAINER (Hanya muncul saat Pause)
+    local EditContainer = Instance.new("Frame")
+    EditContainer.Size = UDim2.new(1, -20, 0, 45)
+    EditContainer.Position = UDim2.new(0, 10, 0, 80)
+    EditContainer.BackgroundTransparency = 1
+    EditContainer.Visible = false
+    EditContainer.Parent = MainFrame
 
     local SliderTitle = Instance.new("TextLabel")
-    SliderTitle.Size = UDim2.new(1, -10, 0, 20)
-    SliderTitle.Position = UDim2.new(0, 5, 0, 5)
+    SliderTitle.Size = UDim2.new(0, 100, 0, 15)
+    SliderTitle.Position = UDim2.new(0, 0, 0, 0)
     SliderTitle.BackgroundTransparency = 1
     SliderTitle.Text = "Timeline (0%)"
     SliderTitle.TextColor3 = Color3.fromRGB(180, 180, 180)
     SliderTitle.Font = Enum.Font.Gotham
     SliderTitle.TextSize = 11
     SliderTitle.TextXAlignment = Enum.TextXAlignment.Left
-    SliderTitle.Parent = SliderContainer
+    SliderTitle.Parent = EditContainer
 
     local SliderTrack = Instance.new("Frame")
-    SliderTrack.Size = UDim2.new(1, -20, 0, 6)
-    SliderTrack.Position = UDim2.new(0, 10, 0, 35)
+    SliderTrack.Size = UDim2.new(0, 300, 0, 6)
+    SliderTrack.Position = UDim2.new(0, 0, 0, 25)
     SliderTrack.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-    SliderTrack.Parent = SliderContainer
+    SliderTrack.Parent = EditContainer
     Instance.new("UICorner", SliderTrack).CornerRadius = UDim.new(1, 0)
 
     local SliderFill = Instance.new("Frame")
@@ -319,7 +293,7 @@ return function(WindUI, RecordingTab)
 
     local SliderKnob = Instance.new("Frame")
     SliderKnob.Size = UDim2.new(0, 14, 0, 14)
-    SliderKnob.Position = UDim2.new(1, -7, 0.5, -7) -- Anchor di ujung fill
+    SliderKnob.Position = UDim2.new(1, -7, 0.5, -7) 
     SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     SliderKnob.Parent = SliderFill
     Instance.new("UICorner", SliderKnob).CornerRadius = UDim.new(1, 0)
@@ -331,56 +305,64 @@ return function(WindUI, RecordingTab)
     SliderBtn.Text = ""
     SliderBtn.Parent = SliderTrack
 
-    local CutBtn = CreateButton("✂️ Cut & Lanjut Rekam", Color3.fromRGB(60, 180, 100), 7)
-    CutBtn.Visible = false
+    local CutBtn = Instance.new("TextButton")
+    CutBtn.Size = UDim2.new(0, 140, 0, 30)
+    CutBtn.Position = UDim2.new(1, -140, 0, 12)
+    CutBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
+    CutBtn.Text = "✂️ Cut & Rekam"
+    CutBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CutBtn.Font = Enum.Font.GothamBold
+    CutBtn.TextSize = 12
+    CutBtn.Parent = EditContainer
+    Instance.new("UICorner", CutBtn).CornerRadius = UDim.new(0, 6)
 
-    -- Update Visibility UI Panel Logic
+    -- Logika Perluasan Panel UI
     local function UpdatePanelUI()
         if isRecording then
-            RecBtn.Text = "⏹️ Stop Record"
+            MainFrame.Size = UDim2.new(0, 480, 0, 80)
+            RecBtn.Text = "⏹️ Stop"
             RecBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
             RecBtn.Visible = true
             PlayPanelBtn.Visible = false
             PausePanelBtn.Visible = false
             StopPanelBtn.Visible = false
-            SliderContainer.Visible = false
-            CutBtn.Visible = false
+            EditContainer.Visible = false
         elseif isPlaying then
             RecBtn.Visible = false
             PlayPanelBtn.Visible = false
             PausePanelBtn.Visible = true
             StopPanelBtn.Visible = true
             if isPaused then
+                MainFrame.Size = UDim2.new(0, 480, 0, 135) -- Lebarkan ke bawah
                 PausePanelBtn.Text = "▶️ Resume"
-                SliderContainer.Visible = true
-                CutBtn.Visible = true
+                EditContainer.Visible = true
             else
+                MainFrame.Size = UDim2.new(0, 480, 0, 80) -- Kecilkan
                 PausePanelBtn.Text = "⏸️ Pause"
-                SliderContainer.Visible = false
-                CutBtn.Visible = false
+                EditContainer.Visible = false
             end
         else
-            RecBtn.Text = "🔴 Mulai Record"
+            MainFrame.Size = UDim2.new(0, 480, 0, 80)
+            RecBtn.Text = "🔴 Record"
             RecBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
             RecBtn.Visible = true
             PlayPanelBtn.Visible = true
             PausePanelBtn.Visible = false
             StopPanelBtn.Visible = false
-            SliderContainer.Visible = false
-            CutBtn.Visible = false
+            EditContainer.Visible = false
         end
     end
 
     UpdatePanelUI() -- Init
 
     -- ==========================================
-    -- LOGIKA TOMBOL FLOATING PANEL
+    -- LOGIKA TOMBOL RECORD & PLAYBACK
     -- ==========================================
     RecBtn.MouseButton1Click:Connect(function()
         if not isRecording then
             isRecording = true
             currentRecordingFrames = {}
-            StatusLbl.Text = "Status: 🔴 Merekam..."
+            StatusLbl.Text = "Merekam..."
             UpdatePanelUI()
 
             recConn = RunService.Heartbeat:Connect(function()
@@ -393,7 +375,7 @@ return function(WindUI, RecordingTab)
                         vel = hrp.AssemblyLinearVelocity,
                         state = hum:GetState() 
                     })
-                    StatusLbl.Text = "Status: 🔴 Merekam (" .. #currentRecordingFrames .. " frames)"
+                    StatusLbl.Text = "🔴 " .. #currentRecordingFrames .. " frames"
                 end
             end)
         else
@@ -435,7 +417,6 @@ return function(WindUI, RecordingTab)
                     StatusLbl.Text = string.format("🚶 Auto-Walk: %d Studs", math.floor(dist))
                 else
                     isAutoWalkingToStart = false 
-                    StatusLbl.Text = "▶️ Memutar rekaman..."
                 end
             else
                 if data[playbackIndex] then
@@ -449,14 +430,9 @@ return function(WindUI, RecordingTab)
                     if nextData then
                         local moveDir = (nextData.cframe.Position - currentData.cframe.Position)
                         local flatMoveDir = Vector3.new(moveDir.X, 0, moveDir.Z) 
-                        if flatMoveDir.Magnitude > 0.02 then
-                            hum:Move(flatMoveDir.Unit, false) 
-                        else
-                            hum:Move(Vector3.zero, false)
-                        end
-                    else
-                        hum:Move(Vector3.zero, false)
-                    end
+                        if flatMoveDir.Magnitude > 0.02 then hum:Move(flatMoveDir.Unit, false) 
+                        else hum:Move(Vector3.zero, false) end
+                    else hum:Move(Vector3.zero, false) end
 
                     local percent = math.floor((playbackIndex / #data) * 100)
                     StatusLbl.Text = string.format("▶️ Frame: %d / %d", playbackIndex, #data)
@@ -480,11 +456,10 @@ return function(WindUI, RecordingTab)
 
     PlayPanelBtn.MouseButton1Click:Connect(function()
         if selectedRecord == "Kosong" or not RecordsDB[selectedRecord] then 
-            StatusLbl.Text = "Pilih file di menu WindUI dulu!" 
+            StatusLbl.Text = "Pilih file di menu WindUI!" 
             return 
         end
         local data = RecordsDB[selectedRecord]
-        
         isPlaying = true
         isPaused = false
         UpdatePanelUI()
@@ -508,8 +483,7 @@ return function(WindUI, RecordingTab)
             if char and char:FindFirstChildOfClass("Humanoid") then
                 char:FindFirstChildOfClass("Humanoid"):Move(Vector3.zero, false)
             end
-            
-            StatusLbl.Text = "⏸️ Paused (Geser slider untuk edit)"
+            StatusLbl.Text = "⏸️ Paused / Editor"
             UpdatePanelUI()
         else
             isPaused = false
@@ -530,17 +504,13 @@ return function(WindUI, RecordingTab)
         UpdatePanelUI()
     end)
 
-    -- Custom Slider Logic
+    -- Custom Slider Input Logic (Saat Paused)
     local sliderDragging = false
     SliderBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            sliderDragging = true
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then sliderDragging = true end
     end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            sliderDragging = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then sliderDragging = false end
     end)
     UserInputService.InputChanged:Connect(function(input)
         if sliderDragging and isPaused and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
@@ -555,13 +525,11 @@ return function(WindUI, RecordingTab)
             local data = RecordsDB[selectedRecord]
             if data then
                 playbackIndex = math.max(1, math.floor(percent * #data))
-                StatusLbl.Text = string.format("⏸️ Preview Frame: %d / %d", playbackIndex, #data)
+                StatusLbl.Text = string.format("⏸️ Frame: %d / %d", playbackIndex, #data)
                 
                 local char = lp.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                if hrp and data[playbackIndex] then
-                    hrp.CFrame = data[playbackIndex].cframe
-                end
+                if hrp and data[playbackIndex] then hrp.CFrame = data[playbackIndex].cframe end
             end
         end
     end)
@@ -572,9 +540,7 @@ return function(WindUI, RecordingTab)
         if not data then return end
 
         local newData = {}
-        for i = 1, playbackIndex do
-            table.insert(newData, data[i])
-        end
+        for i = 1, playbackIndex do table.insert(newData, data[i]) end
         currentRecordingFrames = newData
         
         isPaused = false
@@ -594,7 +560,7 @@ return function(WindUI, RecordingTab)
                     vel = hrp.AssemblyLinearVelocity,
                     state = hum:GetState() 
                 })
-                StatusLbl.Text = "🔴 Merekam Sambungan (" .. #currentRecordingFrames .. " frames)"
+                StatusLbl.Text = "🔴 Lanjut: " .. #currentRecordingFrames .. " frames"
             end
         end)
     end)
@@ -604,7 +570,7 @@ return function(WindUI, RecordingTab)
     -- ==========================================
     RecordingTab:Paragraph({
         Title = "File Manager",
-        Desc = "Manajemen file record JSON. Pilih file di sini, lalu buka Panel UI untuk kontrol Play/Record.",
+        Desc = "Manajemen file record JSON. Pilih file di sini, lalu buka Widget Panel UI.",
         Color = Color3.fromHex("#0F7BFF")
     })
 
@@ -616,7 +582,7 @@ return function(WindUI, RecordingTab)
         Callback = function(opt)
             selectedRecord = type(opt) == "table" and opt.Title or opt
             if selectedRecord ~= "Kosong" then
-                StatusLbl.Text = "File Terpilih: " .. selectedRecord
+                StatusLbl.Text = "File: " .. selectedRecord
             end
         end
     })
@@ -654,12 +620,11 @@ return function(WindUI, RecordingTab)
             if not isUnlocked then return WindUI:Notify({Title="Akses Ditolak", Content="Hanya untuk myzzkey!", Duration=2}) end
             FloatingUI.Enabled = not FloatingUI.Enabled
             if FloatingUI.Enabled then
-                WindUI:Notify({Title="Widget Aktif", Content="Widget (🎬) muncul di layar. Klik untuk membuka panel.", Duration=2})
+                WindUI:Notify({Title="Widget Aktif", Content="Widget (🎬) muncul di layar.", Duration=2})
             end
         end
     })
 
-    -- Init
     LoadAllRecords()
     local initList = {}
     for name, _ in pairs(RecordsDB) do table.insert(initList, name) end
