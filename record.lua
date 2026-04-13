@@ -29,7 +29,7 @@ return function(WindUI, RecordingTab)
     local playbackIndex = 1
     local appendTargetFile = nil 
     
-    -- Variabel Mesin Waktu (Anti-Lag)
+    -- Variabel Mesin Waktu (Anti-Lag & Presisi Tinggi)
     local recordingStartTime = 0
     local playbackStartTime = 0
 
@@ -37,13 +37,13 @@ return function(WindUI, RecordingTab)
     if isfolder and not isfolder(folderName) then makefolder(folderName) end
 
     -- ==========================================
-    -- FUNGSI INTERNAL DATA (Dengan Timestamp)
+    -- FUNGSI INTERNAL DATA
     -- ==========================================
     local function SerializeData(framesArray)
         local serializedFrames = {}
         for i, frame in ipairs(framesArray) do
             serializedFrames[i] = {
-                time = frame.time, -- Simpan Timestamp untuk Anti-Lag
+                time = frame.time, 
                 cframe = {frame.cframe:GetComponents()},
                 vel = {frame.vel.X, frame.vel.Y, frame.vel.Z},
                 state = frame.state.Name 
@@ -61,7 +61,7 @@ return function(WindUI, RecordingTab)
         
         for i, frame in ipairs(framesToProcess) do
             deserializedFrames[i] = {
-                time = frame.time or (i * 0.016), -- Fallback ke 60 FPS jika JSON lama
+                time = frame.time or (i * 0.016), 
                 cframe = CFrame.new(unpack(frame.cframe)),
                 vel = Vector3.new(unpack(frame.vel)),
                 state = Enum.HumanoidStateType[frame.state]
@@ -469,7 +469,7 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- 🕒 TIME-BASED RECORDING ENGINE (ANTI-LAG)
+    -- 🕒 RECORDING ENGINE (OS.CLOCK PRESISI)
     -- ==========================================
     RecBtn.MouseButton1Click:Connect(function()
         if not isRecording then
@@ -477,7 +477,7 @@ return function(WindUI, RecordingTab)
             isRecording = true
             countdownActive = false
             currentRecordingFrames = {}
-            recordingStartTime = tick() -- Mulai hitung waktu
+            recordingStartTime = os.clock() 
             
             StatusLbl.Text = " Merekam..."
             UpdatePanelUI()
@@ -489,7 +489,7 @@ return function(WindUI, RecordingTab)
                 
                 if hrp and hum then
                     table.insert(currentRecordingFrames, {
-                        time = tick() - recordingStartTime, -- Simpan waktu spesifik saat frame ini ter-capture
+                        time = os.clock() - recordingStartTime,
                         cframe = hrp.CFrame,
                         vel = hrp.AssemblyLinearVelocity,
                         state = hum:GetState() 
@@ -522,12 +522,13 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- 🕒 TIME-BASED PLAYBACK ENGINE (SMOOTH LERP)
+    -- 🕒 RENDER-STEPPED PLAYBACK (ULTRA SMOOTH)
     -- ==========================================
     local function StartPlaybackLoop(data)
         if playConn then playConn:Disconnect() end
         
-        playConn = RunService.Heartbeat:Connect(function()
+        -- Menggunakan RenderStepped untuk visual yg super mulus terbebas dari lag physics
+        playConn = RunService.RenderStepped:Connect(function()
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid") 
@@ -542,12 +543,11 @@ return function(WindUI, RecordingTab)
                     StatusLbl.Text = string.format(" AutoWalk: %d Studs", math.floor(dist))
                 else
                     isAutoWalkingToStart = false 
-                    playbackStartTime = tick() - (data[playbackIndex].time or 0)
+                    playbackStartTime = os.clock() - (data[playbackIndex].time or 0)
                 end
             else
-                local t = tick() - playbackStartTime
+                local t = os.clock() - playbackStartTime
                 
-                -- Cari frame yang sesuai dengan waktu (t) saat ini
                 while data[playbackIndex + 1] and t >= data[playbackIndex + 1].time do
                     playbackIndex = playbackIndex + 1
                 end
@@ -556,7 +556,7 @@ return function(WindUI, RecordingTab)
                 local nextFrame = data[playbackIndex + 1]
 
                 if nextFrame then
-                    -- LERP ENGINE: Interpolasi agar super smooth meski file rekaman dari device lag
+                    -- LERP ENGINE (Anti-Lag Interpolation)
                     local timeDiff = nextFrame.time - currentFrame.time
                     if timeDiff <= 0 then timeDiff = 0.001 end
                     
@@ -566,17 +566,15 @@ return function(WindUI, RecordingTab)
                     hrp.AssemblyLinearVelocity = currentFrame.vel:Lerp(nextFrame.vel, alpha)
                     if hum:GetState() ~= currentFrame.state then hum:ChangeState(currentFrame.state) end
                     
-                    -- Trigger Animasi Jalan
                     local moveDir = (nextFrame.cframe.Position - currentFrame.cframe.Position)
                     local flatMoveDir = Vector3.new(moveDir.X, 0, moveDir.Z) 
-                    if flatMoveDir.Magnitude > 0.02 then hum:Move(flatMoveDir.Unit, false) 
+                    if flatMoveDir.Magnitude > 0.01 then hum:Move(flatMoveDir.Unit, false) 
                     else hum:Move(Vector3.zero, false) end
 
                     local percent = math.floor((playbackIndex / #data) * 100)
                     StatusLbl.Text = string.format(" ▶ %d%%", percent)
                     SliderFill.Size = UDim2.new(playbackIndex / #data, 0, 1, 0)
                 else
-                    -- Selesai Playback
                     if playConn then playConn:Disconnect() end
                     hum:Move(Vector3.zero, false) 
                     hum:ChangeState(Enum.HumanoidStateType.Running)
@@ -626,8 +624,8 @@ return function(WindUI, RecordingTab)
             StatusLbl.Text = " ▶️ Resumed"
             UpdatePanelUI()
             
-            -- Resync waktu agar tidak melompat karena di-pause
-            playbackStartTime = tick() - (data[playbackIndex].time or 0)
+            -- Resync waktu menggunakan presisi tinggi os.clock
+            playbackStartTime = os.clock() - (data[playbackIndex].time or 0)
             StartPlaybackLoop(data)
         end
     end)
@@ -645,7 +643,7 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- LOGIKA EDITOR SLIDER & SMART CUT
+    -- LOGIKA EDITOR SLIDER & SMART CUT 
     -- ==========================================
     local sliderDragging = false
     SliderTouchBtn.InputBegan:Connect(function(input)
@@ -703,28 +701,41 @@ return function(WindUI, RecordingTab)
         
         countdownActive = true
         
+        -- KUNCI TRANSI MULUS: Bekukan (Anchor) karakter selama hitung mundur!
         task.spawn(function()
+            hrp.Anchored = true
+            hrp.CFrame = data[playbackIndex].cframe
+
+            for i = 2, 1, -1 do
+                if not countdownActive then 
+                    hrp.Anchored = false
+                    return 
+                end 
+                StatusLbl.Text = string.format(" ⏳ Siap Gerak... %d", i)
+                task.wait(1)
+            end
+
+            if not countdownActive then 
+                hrp.Anchored = false
+                return 
+            end
+            
+            countdownActive = false
+            StatusLbl.Text = " 🔴 Merekam Sambungan..."
+
+            -- Lepaskan anchor dan kembalikan momentum (velocity) 100% ke kondisi asli sebelum mulai rekam ulang
+            hrp.Anchored = false
             hrp.CFrame = data[playbackIndex].cframe
             hrp.AssemblyLinearVelocity = data[playbackIndex].vel
             hum:ChangeState(data[playbackIndex].state)
 
-            for i = 2, 1, -1 do
-                if not countdownActive then return end 
-                StatusLbl.Text = string.format(" ⏳ Siap Gerak... %d", i)
-                task.wait(0.8)
-            end
-
-            if not countdownActive then return end
-            countdownActive = false
-            StatusLbl.Text = " 🔴 Merekam Sambungan..."
-
-            -- Sinkronkan waktu saat menyambung record agar Lerp tidak error
-            recordingStartTime = tick() - (data[playbackIndex].time or 0)
+            -- Sinkronkan waktu saat menyambung record agar Lerp tidak error/lompat
+            recordingStartTime = os.clock() - (data[playbackIndex].time or 0)
 
             recConn = RunService.Heartbeat:Connect(function()
                 if hrp and hum then
                     table.insert(currentRecordingFrames, {
-                        time = tick() - recordingStartTime,
+                        time = os.clock() - recordingStartTime,
                         cframe = hrp.CFrame,
                         vel = hrp.AssemblyLinearVelocity,
                         state = hum:GetState() 
