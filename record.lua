@@ -134,10 +134,10 @@ return function(WindUI, RecordingTab)
 
     -- Main Frame (Kapsul)
     local MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 260, 0, 75) -- Default Size Idle
+    MainFrame.Size = UDim2.new(0, 260, 0, 75) 
     MainFrame.Position = UDim2.new(0.5, -130, 0.8, -80)
     MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-    MainFrame.BackgroundTransparency = 0.2 -- Efek elegan transparan
+    MainFrame.BackgroundTransparency = 0.2 
     MainFrame.BorderSizePixel = 0
     MainFrame.ClipsDescendants = true
     MainFrame.Parent = FloatingUI
@@ -168,7 +168,6 @@ return function(WindUI, RecordingTab)
     Row1Layout.SortOrder = Enum.SortOrder.LayoutOrder
     Row1Layout.Parent = Row1
 
-    -- Fungsi membuat icon button seragam
     local function CreateIconBtn(text, color, isBold)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0, 40, 0, 40)
@@ -180,7 +179,6 @@ return function(WindUI, RecordingTab)
         return btn
     end
 
-    -- Tombol UI
     local ToggleBtn = CreateIconBtn("🎬", Color3.fromRGB(41, 248, 155), false)
     ToggleBtn.Parent = Row1
     
@@ -197,7 +195,7 @@ return function(WindUI, RecordingTab)
     StopBtn.Parent = Row1
 
     local StatusLbl = Instance.new("TextLabel")
-    StatusLbl.Size = UDim2.new(1, -200, 1, 0) -- Fill sisa lebar
+    StatusLbl.Size = UDim2.new(1, -200, 1, 0)
     StatusLbl.BackgroundTransparency = 1
     StatusLbl.Text = " Siap."
     StatusLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -206,7 +204,7 @@ return function(WindUI, RecordingTab)
     StatusLbl.TextXAlignment = Enum.TextXAlignment.Left
     StatusLbl.Parent = Row1
 
-    -- ROW 2: File Manager (Hanya muncul saat Idle)
+    -- ROW 2: File Manager
     local Row2 = Instance.new("Frame")
     Row2.Size = UDim2.new(1, 0, 0, 35)
     Row2.BackgroundTransparency = 1
@@ -257,16 +255,16 @@ return function(WindUI, RecordingTab)
     Instance.new("UICorner", DelBtn).CornerRadius = UDim.new(0, 6)
     DelBtn.Parent = Row2
 
-    -- ROW 3: Editor Slider (Hanya muncul saat Pause)
+    -- ROW 3: Editor Slider & Save Button (Hanya muncul saat Pause)
     local Row3 = Instance.new("Frame")
-    Row3.Size = UDim2.new(1, 0, 0, 50)
+    Row3.Size = UDim2.new(1, 0, 0, 60) -- Diperlebar sedikit untuk tombol save
     Row3.BackgroundTransparency = 1
     Row3.LayoutOrder = 3
     Row3.Parent = MainFrame
 
     local SliderTrack = Instance.new("Frame")
-    SliderTrack.Size = UDim2.new(1, -90, 0, 6)
-    SliderTrack.Position = UDim2.new(0, 10, 0, 22)
+    SliderTrack.Size = UDim2.new(1, -20, 0, 6)
+    SliderTrack.Position = UDim2.new(0, 10, 0, 12)
     SliderTrack.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     Instance.new("UICorner", SliderTrack).CornerRadius = UDim.new(1, 0)
     SliderTrack.Parent = Row3
@@ -292,15 +290,26 @@ return function(WindUI, RecordingTab)
     SliderTouchBtn.Parent = SliderTrack
 
     local CutBtn = Instance.new("TextButton")
-    CutBtn.Size = UDim2.new(0, 65, 0, 26)
-    CutBtn.Position = UDim2.new(1, -75, 0, 12)
+    CutBtn.Size = UDim2.new(0, 115, 0, 26)
+    CutBtn.Position = UDim2.new(0, 10, 0, 28)
     CutBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
-    CutBtn.Text = "✂️ Cut"
+    CutBtn.Text = "✂️ Cut & Rekam"
     CutBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     CutBtn.Font = Enum.Font.GothamBold
     CutBtn.TextSize = 11
     Instance.new("UICorner", CutBtn).CornerRadius = UDim.new(0, 5)
     CutBtn.Parent = Row3
+
+    local SaveEditBtn = Instance.new("TextButton")
+    SaveEditBtn.Size = UDim2.new(0, 115, 0, 26)
+    SaveEditBtn.Position = UDim2.new(1, -125, 0, 28)
+    SaveEditBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 230)
+    SaveEditBtn.Text = "💾 Simpan Edit"
+    SaveEditBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SaveEditBtn.Font = Enum.Font.GothamBold
+    SaveEditBtn.TextSize = 11
+    Instance.new("UICorner", SaveEditBtn).CornerRadius = UDim.new(0, 5)
+    SaveEditBtn.Parent = Row3
 
     -- ==========================================
     -- LOGIKA ANIMASI & DYNAMIC SIZING
@@ -331,11 +340,10 @@ return function(WindUI, RecordingTab)
             StatusLbl.Visible = false
             Row2.Visible = false
             Row3.Visible = false
-            AnimatePanel(40, 40) -- Shrink menjadi tombol bulat kecil
+            AnimatePanel(40, 40)
             return
         end
 
-        -- Mode Expanded
         ToggleBtn.Text = "✖"
         StatusLbl.Visible = true
 
@@ -347,7 +355,7 @@ return function(WindUI, RecordingTab)
             StopBtn.Visible = false
             Row2.Visible = false
             Row3.Visible = false
-            AnimatePanel(160, 40) -- Ultra compact saat merekam
+            AnimatePanel(160, 40) 
             
         elseif isPlaying then
             RecBtn.Visible = false
@@ -359,15 +367,14 @@ return function(WindUI, RecordingTab)
             if isPaused then
                 PauseBtn.Text = "▶️"
                 Row3.Visible = true
-                AnimatePanel(260, 90) -- Expand ke bawah untuk slider
+                AnimatePanel(260, 100) -- Expand ke bawah untuk Slider & tombol Save
             else
                 PauseBtn.Text = "⏸️"
                 Row3.Visible = false
-                AnimatePanel(200, 40) -- Compact saat play biasa
+                AnimatePanel(200, 40) 
             end
             
         else
-            -- Mode Idle
             RecBtn.Visible = true
             RecBtn.Text = "🔴"
             PlayBtn.Visible = true
@@ -375,12 +382,12 @@ return function(WindUI, RecordingTab)
             StopBtn.Visible = false
             Row2.Visible = true
             Row3.Visible = false
-            AnimatePanel(260, 75) -- Standar size dengan file manager
+            AnimatePanel(260, 75) 
         end
     end
 
     -- ==========================================
-    -- LOGIKA DRAG & TOGGLE (Super Presisi)
+    -- LOGIKA DRAG & TOGGLE
     -- ==========================================
     local isDragging = false
     local dragStart, startPos
@@ -416,7 +423,7 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- LOGIKA FUNGSI (FILE, REC, PLAY, SLIDER)
+    -- LOGIKA FUNGSI
     -- ==========================================
     PrevBtn.MouseButton1Click:Connect(function()
         if #availableRecords > 0 then
@@ -476,7 +483,6 @@ return function(WindUI, RecordingTab)
                 SaveRecordFile(recName, currentRecordingFrames) 
                 
                 LoadAllRecords()
-                -- Auto focus ke file baru
                 for i, v in ipairs(availableRecords) do
                     if v == recName then currentRecordIndex = i break end
                 end
@@ -569,7 +575,7 @@ return function(WindUI, RecordingTab)
             if char and char:FindFirstChildOfClass("Humanoid") then
                 char:FindFirstChildOfClass("Humanoid"):Move(Vector3.zero, false)
             end
-            StatusLbl.Text = " ⏸️ Paused"
+            StatusLbl.Text = " ⏸️ Paused (Editor)"
             UpdatePanelUI()
         else
             isPaused = false
@@ -649,6 +655,25 @@ return function(WindUI, RecordingTab)
                 StatusLbl.Text = " 🔴 Lanjut: " .. #currentRecordingFrames .. "f"
             end
         end)
+    end)
+
+    -- LOGIKA TOMBOL SIMPAN OVERWRITE
+    SaveEditBtn.MouseButton1Click:Connect(function()
+        if not isPaused then return end
+        local selectedFile = availableRecords[currentRecordIndex]
+        local data = RecordsDB[selectedFile]
+        if not data then return end
+
+        -- Potong data sesuai dengan posisi frame slider saat ini
+        local newData = {}
+        for i = 1, playbackIndex do table.insert(newData, data[i]) end
+        
+        -- Overwrite ke memory dan ke fisik file
+        RecordsDB[selectedFile] = newData
+        SaveRecordFile(selectedFile, newData)
+        
+        StatusLbl.Text = " 💾 Timpa: " .. selectedFile
+        -- Tetap biarkan di mode pause agar bisa lanjut diedit / ditest play
     end)
 
     -- ==========================================
