@@ -5,12 +5,13 @@ return function(WindUI, RecordingTab)
     local lp = Players.LocalPlayer
 
     -- ==========================================
-    -- VARIABEL SISTEM & FOLDER MANAGEMENT
+    -- VARIABEL SISTEM & STATE
     -- ==========================================
     local isUnlocked = (lp.Name == "myzzkey") 
 
     local RecordsDB = {}
     local currentRecordingFrames = {}
+    
     local isRecording = false
     local isPlaying = false
     local isPaused = false
@@ -31,13 +32,9 @@ return function(WindUI, RecordingTab)
     local folderName = "Recording"
     if isfolder and not isfolder(folderName) then makefolder(folderName) end
 
-    -- Helper Hide/Show UI
-    local function SetUIVisible(element, isVisible)
-        if element and element.Instance then
-            pcall(function() element.Instance.Visible = isVisible end)
-        end
-    end
-
+    -- ==========================================
+    -- FUNGSI INTERNAL (DATA & FILE)
+    -- ==========================================
     local function SerializeData(framesArray)
         local serialized = {}
         for i, frame in ipairs(framesArray) do
@@ -98,9 +95,6 @@ return function(WindUI, RecordingTab)
         end
     end
 
-    -- ==========================================
-    -- ADVANCED LOGIC (Nearest Frame & CP Scan)
-    -- ==========================================
     local function FindNearestFrameIndex(data, currentPos)
         local nearestIdx = 1
         local minDis = math.huge
@@ -135,12 +129,74 @@ return function(WindUI, RecordingTab)
                 end
             end
         end
-        if timelineText == "" then timelineText = "• Tidak ada CP terdeteksi di rute ini." end
+        if timelineText == "" then timelineText = "• Tidak ada CP terdeteksi di rute rekaman ini." end
         return timelineText
     end
 
+    local function StartPlaybackLoop(data)
+        if playConn then playConn:Disconnect() end
+        playConn = RunService.Heartbeat:Connect(function()
+            local char = lp.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid") 
+            
+            if not hrp or not hum then return end
+
+            if isAutoWalkingToStart then
+                local targetPos = data[playbackIndex].cframe.Position
+                local dist = (hrp.Position - targetPos).Magnitude
+                
+                if dist > 3 then
+                    hum:MoveTo(targetPos)
+                    FrameInfo:SetDesc(string.format("Status: 🚶 Auto-Walk ke Rute\nJarak: %d Studs", math.floor(dist)))
+                else
+                    isAutoWalkingToStart = false 
+                    WindUI:Notify({Title="Menempel", Content="Memulai sinkronisasi rute!", Duration=1})
+                end
+            else
+                if data[playbackIndex] then
+                    local currentData = data[playbackIndex]
+                    local nextData = data[playbackIndex + 1]
+                    
+                    hrp.CFrame = currentData.cframe
+                    hrp.AssemblyLinearVelocity = currentData.vel
+                    if hum:GetState() ~= currentData.state then hum:ChangeState(currentData.state) end
+                    
+                    if nextData then
+                        local moveDir = (nextData.cframe.Position - currentData.cframe.Position)
+                        local flatMoveDir = Vector3.new(moveDir.X, 0, moveDir.Z) 
+                        if flatMoveDir.Magnitude > 0.02 then
+                            hum:Move(flatMoveDir.Unit, false) 
+                        else
+                            hum:Move(Vector3.zero, false)
+                        end
+                    else
+                        hum:Move(Vector3.zero, false)
+                    end
+
+                    FrameInfo:SetDesc("Status: ▶️ Memutar (".. selectedRecord ..")\nFrame: " .. playbackIndex .. " / " .. #data)
+                    playbackIndex = playbackIndex + 1
+                else
+                    -- Selesai
+                    if playConn then playConn:Disconnect() end
+                    hum:Move(Vector3.zero, false) 
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    
+                    isPlaying = false
+                    isPaused = false
+                    FrameInfo:SetDesc("Status: ✅ Selesai memutar\nTotal Frames: " .. #data)
+                    WindUI:Notify({Title="Selesai", Content="Playback file selesai!", Duration=1.5, Icon="check"})
+                    
+                    PauseBtn:SetTitle("🚫 Pause Terkunci")
+                    StopBtn:SetTitle("🚫 Stop Terkunci")
+                end
+            end
+        end)
+    end
+
     -- ==========================================
-    -- UI ELEMENTS RECORDING
+    -- UI: 1. INFO & FILE MANAGEMENT
     -- ==========================================
     local lockStatus = isUnlocked and "✅ Terbuka (Akses myzzkey)" or "🔒 Terkunci (Bukan myzzkey)"
     FrameInfo = RecordingTab:Paragraph({
@@ -150,46 +206,58 @@ return function(WindUI, RecordingTab)
         Color = Color3.fromHex("#0F7BFF")
     })
 
-    StorageInfo = RecordingTab:Paragraph({
-        Title = "📁 Folder Penyimpanan Keyframe",
-        Desc = "Lokasi: storage/emulated/0/Android/data/com.roblox.client/workspace/Recording/\nSetiap record akan disimpan sebagai file (.json).",
-        Color = Color3.fromHex("#29F89B")
-    })
-
-    RecordingTab:Input({
-        Title = "Nama Custom Save Record",
-        Placeholder = "Nama file (Kosongkan utk Auto Record_01.json)",
-        Callback = function(text) customRecordName = text end
-    })
-
     RecordListDropdown = RecordingTab:Dropdown({
-        Title = "List File Record (Folder Recording)",
+        Title = "List File Record",
         Values = {"Kosong"},
         Value = "Kosong",
         SearchBarEnabled = true,
         Callback = function(opt)
             selectedRecord = type(opt) == "table" and opt.Title or opt
-            local isValid = (selectedRecord ~= "Kosong" and selectedRecord ~= nil)
-            
-            -- Hide/Show logic berdasarkan validitas
-            SetUIVisible(PlayBtn, isValid)
-            SetUIVisible(DelBtn, isValid)
-            if isValid then
+            if selectedRecord ~= "Kosong" and selectedRecord ~= nil then
                 PlayBtn:SetTitle("▶️ Play File (".. selectedRecord .. ")")
                 DelBtn:SetTitle("🗑️ Hapus File (".. selectedRecord .. ")")
+            else
+                PlayBtn:SetTitle("🚫 Pilih List (Play Terkunci)")
+                DelBtn:SetTitle("🚫 Pilih List (Hapus Terkunci)")
             end
         end
     })
 
-    local function UpdateRecordList()
-        local list = {}
-        local sortedKeys = {}
-        for name, _ in pairs(RecordsDB) do table.insert(sortedKeys, name) end
-        table.sort(sortedKeys)
-        for _, name in ipairs(sortedKeys) do table.insert(list, name) end
-        if #list == 0 then table.insert(list, "Kosong") end
-        if RecordListDropdown then RecordListDropdown:Refresh(list) end
-    end
+    DelBtn = RecordingTab:Button({
+        Title = "🚫 Pilih List (Hapus Terkunci)",
+        Callback = function()
+            if not isUnlocked then return end
+            if selectedRecord == "Kosong" or isPlaying or isRecording then 
+                return WindUI:Notify({Title="Gagal", Content="Pilih list valid / hentikan aktivitas dulu", Duration=2}) 
+            end 
+
+            if RecordsDB[selectedRecord] then
+                RecordsDB[selectedRecord] = nil
+                DeleteRecordFile(selectedRecord) 
+                
+                local list = {}
+                for name, _ in pairs(RecordsDB) do table.insert(list, name) end
+                if #list == 0 then table.insert(list, "Kosong") end
+                if RecordListDropdown then RecordListDropdown:Refresh(list) end
+
+                WindUI:Notify({Title="File Dihapus", Content=selectedRecord .. ".json dihapus", Duration=1.5})
+                selectedRecord = "Kosong"
+                PlayBtn:SetTitle("🚫 Pilih List (Play Terkunci)")
+                DelBtn:SetTitle("🚫 Pilih List (Hapus Terkunci)")
+            end
+        end
+    })
+
+    RecordingTab:Divider()
+
+    -- ==========================================
+    -- UI: 2. RECORDING CONTROL
+    -- ==========================================
+    RecordingTab:Input({
+        Title = "Nama Custom Save Record",
+        Placeholder = "Nama file (Kosongkan utk Auto Record_01)",
+        Callback = function(text) customRecordName = text end
+    })
 
     MainRecordBtn = RecordingTab:Button({
         Title = "🔴 Mulai / Stop Record",
@@ -199,7 +267,6 @@ return function(WindUI, RecordingTab)
             if isPlaying then return WindUI:Notify({Title="Error", Content="Sedang memutar record!", Duration=2}) end
 
             if not isRecording then
-                -- START RECORD
                 isRecording = true
                 currentRecordingFrames = {}
                 WindUI:Notify({Title="Recording", Content="Merekam posisi karakter...", Duration=1.5, Icon="video"})
@@ -218,7 +285,6 @@ return function(WindUI, RecordingTab)
                     end
                 end)
             else
-                -- STOP RECORD
                 isRecording = false
                 if recConn then recConn:Disconnect() end
 
@@ -233,7 +299,11 @@ return function(WindUI, RecordingTab)
                     
                     RecordsDB[recName] = currentRecordingFrames
                     SaveRecordFile(recName, currentRecordingFrames) 
-                    UpdateRecordList()
+                    
+                    local list = {}
+                    for name, _ in pairs(RecordsDB) do table.insert(list, name) end
+                    if RecordListDropdown then RecordListDropdown:Refresh(list) end
+
                     WindUI:Notify({Title="Disimpan", Content="Tersimpan: " .. recName .. ".json", Duration=2, Icon="save"})
                     FrameInfo:SetDesc("Status: ✅ Selesai merekam\nTotal Frames: " .. #currentRecordingFrames)
                 else
@@ -243,14 +313,17 @@ return function(WindUI, RecordingTab)
         end
     })
 
+    RecordingTab:Divider()
+
     -- ==========================================
-    -- FITUR PLAYBACK (Auto-Walk, Pause, Stop)
+    -- UI: 3. PLAYBACK CONTROL
     -- ==========================================
     PlayBtn = RecordingTab:Button({
-        Title = "▶️ Play File",
+        Title = "🚫 Pilih List (Play Terkunci)",
         Callback = function()
             if not isUnlocked then return end
-            if isRecording or isPlaying then return end
+            if selectedRecord == "Kosong" then return WindUI:Notify({Title="Gagal", Content="Pilih list file terlebih dahulu!", Duration=2}) end
+            if isRecording or isPlaying then return WindUI:Notify({Title="Error", Content="Matikan record/playback saat ini!", Duration=2}) end
 
             local data = RecordsDB[selectedRecord]
             if not data then return end
@@ -258,7 +331,6 @@ return function(WindUI, RecordingTab)
             isPlaying = true
             isPaused = false
             
-            -- Deteksi posisi terdekat untuk fitur Auto-Walk Seamless
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             playbackIndex = hrp and FindNearestFrameIndex(data, hrp.Position) or 1
@@ -266,81 +338,23 @@ return function(WindUI, RecordingTab)
 
             WindUI:Notify({Title="Memutar", Content="Berjalan otomatis ke titik rekaman terdekat...", Duration=2})
             
-            -- UI Visibilities
-            SetUIVisible(PlayBtn, false)
-            SetUIVisible(DelBtn, false)
-            SetUIVisible(MainRecordBtn, false)
-            SetUIVisible(StopBtn, true)
-            SetUIVisible(PauseBtn, true)
-
-            playConn = RunService.Heartbeat:Connect(function()
-                local char = lp.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                local hum = char and char:FindFirstChildOfClass("Humanoid") 
-                
-                if not hrp or not hum then return end
-
-                if isAutoWalkingToStart then
-                    local targetPos = data[playbackIndex].cframe.Position
-                    local dist = (hrp.Position - targetPos).Magnitude
-                    
-                    if dist > 3 then
-                        hum:MoveTo(targetPos)
-                        FrameInfo:SetDesc(string.format("Status: 🚶 Auto-Walk ke Rute\nJarak: %d Studs", dist))
-                    else
-                        isAutoWalkingToStart = false -- Sampai, mulai playback
-                        WindUI:Notify({Title="Menempel", Content="Memulai sinkronisasi rute!", Duration=1})
-                    end
-                else
-                    -- Normal Playback
-                    if data[playbackIndex] then
-                        local currentData = data[playbackIndex]
-                        local nextData = data[playbackIndex + 1]
-                        
-                        hrp.CFrame = currentData.cframe
-                        hrp.AssemblyLinearVelocity = currentData.vel
-                        if hum:GetState() ~= currentData.state then hum:ChangeState(currentData.state) end
-                        
-                        if nextData then
-                            local moveDir = (nextData.cframe.Position - currentData.cframe.Position)
-                            local flatMoveDir = Vector3.new(moveDir.X, 0, moveDir.Z) 
-                            if flatMoveDir.Magnitude > 0.02 then
-                                hum:Move(flatMoveDir.Unit, false) 
-                            else
-                                hum:Move(Vector3.zero, false)
-                            end
-                        else
-                            hum:Move(Vector3.zero, false)
-                        end
-
-                        FrameInfo:SetDesc("Status: ▶️ Memutar (".. selectedRecord ..")\nFrame: " .. playbackIndex .. " / " .. #data)
-                        playbackIndex = playbackIndex + 1
-                    else
-                        -- End of file
-                        if playConn then playConn:Disconnect() end
-                        hum:Move(Vector3.zero, false) 
-                        hum:ChangeState(Enum.HumanoidStateType.Running)
-                        hrp.AssemblyLinearVelocity = Vector3.zero
-                        
-                        isPlaying = false
-                        FrameInfo:SetDesc("Status: ✅ Selesai memutar\nTotal Frames: " .. #data)
-                        
-                        -- Reset UI
-                        SetUIVisible(StopBtn, false)
-                        SetUIVisible(PauseBtn, false)
-                        SetUIVisible(PlayBtn, true)
-                        SetUIVisible(DelBtn, true)
-                        SetUIVisible(MainRecordBtn, true)
-                    end
-                end
-            end)
+            PauseBtn:SetTitle("⏸️ Pause Playback")
+            StopBtn:SetTitle("⏹️ Stop Playback")
+            
+            StartPlaybackLoop(data)
         end
     })
 
     PauseBtn = RecordingTab:Button({
-        Title = "⏸️ Pause & Edit (Keyframe)",
+        Title = "🚫 Pause Terkunci",
         Callback = function()
-            if isPlaying and not isPaused then
+            if not isPlaying then return WindUI:Notify({Title="Gagal", Content="Tidak ada yang diputar!", Duration=1.5}) end
+            
+            local data = RecordsDB[selectedRecord]
+            if not data then return end
+
+            if not isPaused then
+                -- TRIGGER PAUSE
                 isPaused = true
                 if playConn then playConn:Disconnect() end
                 
@@ -349,25 +363,28 @@ return function(WindUI, RecordingTab)
                     char:FindFirstChildOfClass("Humanoid"):Move(Vector3.zero, false)
                 end
                 
-                -- Kalkulasi CP Info & Update UI
-                local data = RecordsDB[selectedRecord]
+                PauseBtn:SetTitle("▶️ Resume Playback")
+                
                 local cpText = ScanCPTimeline(data)
-                TimelineInfo:SetDesc("Pilih titik keyframe di mana kamu ingin melanjutkan (Cut).\n\n" .. cpText)
-                
-                -- Tampilkan Editor Keyframe
-                SetUIVisible(PauseBtn, false)
-                SetUIVisible(TimelineInfo, true)
-                SetUIVisible(TimelineSlider, true)
-                SetUIVisible(CutRecordBtn, true)
-                
+                TimelineInfo:SetDesc("Gunakan slider untuk mencari frame, lalu klik Lanjut Rekam.\n\n" .. cpText)
                 FrameInfo:SetDesc("Status: ⏸️ Paused / Editing\nFrame: " .. playbackIndex .. " / " .. #data)
+                WindUI:Notify({Title="Paused", Content="Gunakan editor di bawah untuk memotong rekaman.", Duration=2})
+            else
+                -- TRIGGER RESUME
+                isPaused = false
+                PauseBtn:SetTitle("⏸️ Pause Playback")
+                TimelineInfo:SetDesc("Status: Playback sedang berjalan. Tekan Pause untuk mengedit.")
+                WindUI:Notify({Title="Resumed", Content="Melanjutkan pemutaran...", Duration=1.5})
+                StartPlaybackLoop(data)
             end
         end
     })
 
     StopBtn = RecordingTab:Button({
-        Title = "⏹️ Stop Playback",
+        Title = "🚫 Stop Terkunci",
         Callback = function()
+            if not isPlaying and not isPaused then return end
+            
             if playConn then playConn:Disconnect() end
             local char = lp.Character
             if char and char:FindFirstChildOfClass("Humanoid") then char:FindFirstChildOfClass("Humanoid"):Move(Vector3.zero, false) end
@@ -376,43 +393,36 @@ return function(WindUI, RecordingTab)
             isPaused = false
             
             FrameInfo:SetDesc("Status: ⏹️ Dihentikan\nTotal Frames: 0")
+            PauseBtn:SetTitle("🚫 Pause Terkunci")
+            StopBtn:SetTitle("🚫 Stop Terkunci")
+            TimelineInfo:SetDesc("Status: Menunggu file di Play & Pause...")
             
-            -- Kembalikan UI ke normal
-            SetUIVisible(StopBtn, false)
-            SetUIVisible(PauseBtn, false)
-            SetUIVisible(TimelineInfo, false)
-            SetUIVisible(TimelineSlider, false)
-            SetUIVisible(CutRecordBtn, false)
-            SetUIVisible(PlayBtn, true)
-            SetUIVisible(DelBtn, true)
-            SetUIVisible(MainRecordBtn, true)
+            WindUI:Notify({Title="Stop", Content="Pemutaran dihentikan secara paksa.", Duration=1.5})
         end
     })
 
+    RecordingTab:Divider()
+
     -- ==========================================
-    -- EDITOR SLIDER & CUT SYSTEM
+    -- UI: 4. EDITOR TIMELINE & CUT
     -- ==========================================
     TimelineInfo = RecordingTab:Paragraph({
         Title = "✂️ Editor Keyframe & Timeline CP",
-        Desc = "Memuat data...",
+        Desc = "Status: Menunggu file di Play & Pause...",
         Color = Color3.fromHex("#F89B29")
     })
 
     TimelineSlider = RecordingTab:Slider({
         Title = "Scrub Timeline (%)",
-        Min = 1,
-        Max = 100,
-        Value = 1,
+        Min = 1, Max = 100, Value = 1,
         Callback = function(percent)
-            if not isPaused then return end
+            if not isPaused then return end 
             local data = RecordsDB[selectedRecord]
             if not data then return end
             
-            -- Sinkronisasi persen ke index array
             playbackIndex = math.floor((percent / 100) * #data)
             if playbackIndex < 1 then playbackIndex = 1 end
             
-            -- Preview Teleport Karakter saat di-slide
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if hrp and data[playbackIndex] then
@@ -424,35 +434,31 @@ return function(WindUI, RecordingTab)
     })
 
     CutRecordBtn = RecordingTab:Button({
-        Title = "✂️ Lanjut Rekam (Dari Sini)",
+        Title = "✂️ Cut & Lanjut Rekam (Dari Sini)",
         Callback = function()
-            if not isPaused then return end
+            if not isPaused then return WindUI:Notify({Title="Gagal", Content="Harus dalam status Pause untuk mengedit!", Duration=2}) end
             
             local data = RecordsDB[selectedRecord]
+            if not data then return end
+
             local newData = {}
-            -- Potong (Cut) array dari 1 sampai posisi slider saat ini
             for i = 1, playbackIndex do
                 table.insert(newData, data[i])
             end
             
             currentRecordingFrames = newData
             
-            -- Reset Status
             isPaused = false
             isPlaying = false
             isAutoWalkingToStart = false
-            isRecording = true -- Langsung switch ke mode merekam
+            isRecording = true 
             
-            -- Kembalikan UI
-            SetUIVisible(StopBtn, false)
-            SetUIVisible(TimelineInfo, false)
-            SetUIVisible(TimelineSlider, false)
-            SetUIVisible(CutRecordBtn, false)
-            SetUIVisible(MainRecordBtn, true)
+            PauseBtn:SetTitle("🚫 Pause Terkunci")
+            StopBtn:SetTitle("🚫 Stop Terkunci")
+            TimelineInfo:SetDesc("Status: Sedang merekam ulang sambungan...")
             
             WindUI:Notify({Title="Cut & Record", Content="Melanjutkan rekaman dari Frame " .. playbackIndex, Duration=2})
             
-            -- Mulai loop merekam sambungan
             recConn = RunService.Heartbeat:Connect(function()
                 local char = lp.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -469,34 +475,12 @@ return function(WindUI, RecordingTab)
         end
     })
 
-    DelBtn = RecordingTab:Button({
-        Title = "🗑️ Hapus File",
-        Callback = function()
-            if not isUnlocked then return end
-            if selectedRecord == "Kosong" then return end 
-
-            if RecordsDB[selectedRecord] then
-                RecordsDB[selectedRecord] = nil
-                DeleteRecordFile(selectedRecord) 
-                UpdateRecordList()
-                WindUI:Notify({Title="File Dihapus", Content=selectedRecord .. ".json dihapus", Duration=1.5})
-                selectedRecord = "Kosong"
-                
-                SetUIVisible(PlayBtn, false)
-                SetUIVisible(DelBtn, false)
-            end
-        end
-    })
-
+    -- ==========================================
+    -- INISIALISASI AKHIR
+    -- ==========================================
     LoadAllRecords()
-    UpdateRecordList()
-
-    -- Sembunyikan UI yang tidak dipakai di awal
-    SetUIVisible(PlayBtn, false)
-    SetUIVisible(DelBtn, false)
-    SetUIVisible(StopBtn, false)
-    SetUIVisible(PauseBtn, false)
-    SetUIVisible(TimelineInfo, false)
-    SetUIVisible(TimelineSlider, false)
-    SetUIVisible(CutRecordBtn, false)
+    local initList = {}
+    for name, _ in pairs(RecordsDB) do table.insert(initList, name) end
+    if #initList == 0 then table.insert(initList, "Kosong") end
+    if RecordListDropdown then RecordListDropdown:Refresh(initList) end
 end
