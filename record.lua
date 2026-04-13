@@ -3,6 +3,7 @@ return function(WindUI, RecordingTab)
     local RunService = game:GetService("RunService")
     local HttpService = game:GetService("HttpService")
     local UserInputService = game:GetService("UserInputService")
+    local TweenService = game:GetService("TweenService")
     local CoreGui = game:GetService("CoreGui")
     local lp = Players.LocalPlayer
 
@@ -19,6 +20,7 @@ return function(WindUI, RecordingTab)
     local isPlaying = false
     local isPaused = false
     local isAutoWalkingToStart = false
+    local isMinimized = false
     
     local recConn = nil
     local playConn = nil
@@ -120,305 +122,303 @@ return function(WindUI, RecordingTab)
     end
 
     -- ==========================================
-    -- CUSTOM FLOATING UI (COMPACT HORIZONTAL)
+    -- CUSTOM FLOATING UI (DYNAMIC CAPSULE)
     -- ==========================================
     local FloatingUI = Instance.new("ScreenGui")
-    FloatingUI.Name = "SYNC_RecordPanel_Compact"
+    FloatingUI.Name = "SYNC_DynamicPanel"
     FloatingUI.ResetOnSpawn = false
     FloatingUI.Enabled = false
     
     local uiParent = (gethui and gethui()) or (pcall(function() return CoreGui.Name end) and CoreGui) or lp.PlayerGui
     FloatingUI.Parent = uiParent
 
-    -- 1. Widget Button (Lingkaran Diperkecil)
-    local WidgetBtn = Instance.new("TextButton")
-    WidgetBtn.Size = UDim2.new(0, 38, 0, 38)
-    WidgetBtn.Position = UDim2.new(0.5, -19, 0.05, 0)
-    WidgetBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-    WidgetBtn.Text = "🎬"
-    WidgetBtn.TextSize = 18
-    WidgetBtn.Parent = FloatingUI
-    
-    Instance.new("UICorner", WidgetBtn).CornerRadius = UDim.new(1, 0)
-    local WidgetStroke = Instance.new("UIStroke")
-    WidgetStroke.Color = Color3.fromRGB(41, 248, 155)
-    WidgetStroke.Thickness = 2
-    WidgetStroke.Parent = WidgetBtn
-
-    -- 2. Main Panel (Lebih Kecil & Ramping)
+    -- Main Frame (Kapsul)
     local MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 400, 0, 75)
-    MainFrame.Position = UDim2.new(0.5, -200, 0.8, -80)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+    MainFrame.Size = UDim2.new(0, 260, 0, 75) -- Default Size Idle
+    MainFrame.Position = UDim2.new(0.5, -130, 0.8, -80)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    MainFrame.BackgroundTransparency = 0.2 -- Efek elegan transparan
     MainFrame.BorderSizePixel = 0
-    MainFrame.Visible = false 
     MainFrame.ClipsDescendants = true
     MainFrame.Parent = FloatingUI
 
-    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 12)
+    UICorner.Parent = MainFrame
+
     local UIStroke = Instance.new("UIStroke")
     UIStroke.Color = Color3.fromRGB(41, 248, 155)
-    UIStroke.Thickness = 1.5
+    UIStroke.Thickness = 1.2
+    UIStroke.Transparency = 0.3
     UIStroke.Parent = MainFrame
 
-    -- Header / Drag Area
-    local HeaderFrame = Instance.new("Frame")
-    HeaderFrame.Size = UDim2.new(1, 0, 0, 30)
-    HeaderFrame.BackgroundTransparency = 1
-    HeaderFrame.Parent = MainFrame
+    local MainLayout = Instance.new("UIListLayout")
+    MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    MainLayout.Parent = MainFrame
 
-    local TitleLbl = Instance.new("TextLabel")
-    TitleLbl.Size = UDim2.new(0, 110, 1, 0)
-    TitleLbl.Position = UDim2.new(0, 12, 0, 0)
-    TitleLbl.BackgroundTransparency = 1
-    TitleLbl.Text = "SYNC Record"
-    TitleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TitleLbl.Font = Enum.Font.GothamBold
-    TitleLbl.TextSize = 13
-    TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
-    TitleLbl.Parent = HeaderFrame
+    -- ROW 1: Controls & Drag Handle
+    local Row1 = Instance.new("Frame")
+    Row1.Size = UDim2.new(1, 0, 0, 40)
+    Row1.BackgroundTransparency = 1
+    Row1.LayoutOrder = 1
+    Row1.Parent = MainFrame
 
-    -- File Cycler (Navigasi File Horizontal)
-    local FileNavFrame = Instance.new("Frame")
-    FileNavFrame.Size = UDim2.new(0, 180, 0, 22)
-    FileNavFrame.Position = UDim2.new(1, -215, 0, 4)
-    FileNavFrame.BackgroundTransparency = 1
-    FileNavFrame.Parent = HeaderFrame
+    local Row1Layout = Instance.new("UIListLayout")
+    Row1Layout.FillDirection = Enum.FillDirection.Horizontal
+    Row1Layout.SortOrder = Enum.SortOrder.LayoutOrder
+    Row1Layout.Parent = Row1
 
-    local UIListLayoutNav = Instance.new("UIListLayout")
-    UIListLayoutNav.FillDirection = Enum.FillDirection.Horizontal
-    UIListLayoutNav.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    UIListLayoutNav.SortOrder = Enum.SortOrder.LayoutOrder
-    UIListLayoutNav.Padding = UDim.new(0, 4)
-    UIListLayoutNav.Parent = FileNavFrame
-
-    local function CreateNavBtn(text, color, width, order)
+    -- Fungsi membuat icon button seragam
+    local function CreateIconBtn(text, color, isBold)
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, width, 1, 0)
-        btn.BackgroundColor3 = color
+        btn.Size = UDim2.new(0, 40, 0, 40)
+        btn.BackgroundTransparency = 1
         btn.Text = text
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 11
-        btn.LayoutOrder = order
-        btn.Parent = FileNavFrame
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+        btn.TextColor3 = color
+        btn.Font = isBold and Enum.Font.GothamBold or Enum.Font.Gotham
+        btn.TextSize = 18
         return btn
     end
 
-    local PrevFileBtn = CreateNavBtn("<", Color3.fromRGB(40, 40, 50), 22, 1)
+    -- Tombol UI
+    local ToggleBtn = CreateIconBtn("🎬", Color3.fromRGB(41, 248, 155), false)
+    ToggleBtn.Parent = Row1
     
-    local CurrentFileLbl = Instance.new("TextLabel")
-    CurrentFileLbl.Size = UDim2.new(0, 90, 1, 0)
-    CurrentFileLbl.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
-    CurrentFileLbl.Text = "Kosong"
-    CurrentFileLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
-    CurrentFileLbl.Font = Enum.Font.Gotham
-    CurrentFileLbl.TextSize = 11
-    CurrentFileLbl.LayoutOrder = 2
-    CurrentFileLbl.Parent = FileNavFrame
-    Instance.new("UICorner", CurrentFileLbl).CornerRadius = UDim.new(0, 4)
+    local RecBtn = CreateIconBtn("🔴", Color3.fromRGB(255, 80, 80), false)
+    RecBtn.Parent = Row1
+    
+    local PlayBtn = CreateIconBtn("▶️", Color3.fromRGB(80, 200, 255), false)
+    PlayBtn.Parent = Row1
+    
+    local PauseBtn = CreateIconBtn("⏸️", Color3.fromRGB(255, 180, 80), false)
+    PauseBtn.Parent = Row1
+    
+    local StopBtn = CreateIconBtn("⏹️", Color3.fromRGB(200, 100, 100), false)
+    StopBtn.Parent = Row1
 
-    local NextFileBtn = CreateNavBtn(">", Color3.fromRGB(40, 40, 50), 22, 3)
-    local DeleteFileBtn = CreateNavBtn("🗑️", Color3.fromRGB(180, 60, 60), 26, 4)
-
-    -- Status Bawah Header
     local StatusLbl = Instance.new("TextLabel")
-    StatusLbl.Size = UDim2.new(1, -24, 0, 12)
-    StatusLbl.Position = UDim2.new(0, 12, 0, 28)
+    StatusLbl.Size = UDim2.new(1, -200, 1, 0) -- Fill sisa lebar
     StatusLbl.BackgroundTransparency = 1
-    StatusLbl.Text = "Status: Siap merekam/memutar."
-    StatusLbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+    StatusLbl.Text = " Siap."
+    StatusLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
     StatusLbl.Font = Enum.Font.Gotham
-    StatusLbl.TextSize = 10
+    StatusLbl.TextSize = 11
     StatusLbl.TextXAlignment = Enum.TextXAlignment.Left
-    StatusLbl.Parent = MainFrame
+    StatusLbl.Parent = Row1
 
-    -- Logika Input Sempurna untuk Widget (Klik vs Drag)
-    local isDraggingWidget = false
-    local widgetDragStart, widgetStartPos
+    -- ROW 2: File Manager (Hanya muncul saat Idle)
+    local Row2 = Instance.new("Frame")
+    Row2.Size = UDim2.new(1, 0, 0, 35)
+    Row2.BackgroundTransparency = 1
+    Row2.LayoutOrder = 2
+    Row2.Parent = MainFrame
 
-    WidgetBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDraggingWidget = true
-            widgetDragStart = input.Position
-            widgetStartPos = WidgetBtn.Position
-        end
-    end)
+    local PrevBtn = Instance.new("TextButton")
+    PrevBtn.Size = UDim2.new(0, 30, 0, 25)
+    PrevBtn.Position = UDim2.new(0, 5, 0, 5)
+    PrevBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    PrevBtn.Text = "<"
+    PrevBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    PrevBtn.Font = Enum.Font.GothamBold
+    PrevBtn.TextSize = 12
+    Instance.new("UICorner", PrevBtn).CornerRadius = UDim.new(0, 6)
+    PrevBtn.Parent = Row2
 
-    WidgetBtn.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDraggingWidget = false
-            local delta = input.Position - widgetDragStart
-            if delta.Magnitude < 5 then
-                MainFrame.Visible = not MainFrame.Visible
-            end
-        end
-    end)
+    local FileLbl = Instance.new("TextLabel")
+    FileLbl.Size = UDim2.new(1, -110, 0, 25)
+    FileLbl.Position = UDim2.new(0, 40, 0, 5)
+    FileLbl.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+    FileLbl.Text = "Kosong"
+    FileLbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+    FileLbl.Font = Enum.Font.Gotham
+    FileLbl.TextSize = 11
+    Instance.new("UICorner", FileLbl).CornerRadius = UDim.new(0, 6)
+    FileLbl.Parent = Row2
 
-    -- Logika Input Drag MainFrame
-    local isDraggingFrame = false
-    local frameDragStart, frameStartPos
+    local NextBtn = Instance.new("TextButton")
+    NextBtn.Size = UDim2.new(0, 30, 0, 25)
+    NextBtn.Position = UDim2.new(1, -65, 0, 5)
+    NextBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    NextBtn.Text = ">"
+    NextBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    NextBtn.Font = Enum.Font.GothamBold
+    NextBtn.TextSize = 12
+    Instance.new("UICorner", NextBtn).CornerRadius = UDim.new(0, 6)
+    NextBtn.Parent = Row2
 
-    HeaderFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDraggingFrame = true
-            frameDragStart = input.Position
-            frameStartPos = MainFrame.Position
-        end
-    end)
+    local DelBtn = Instance.new("TextButton")
+    DelBtn.Size = UDim2.new(0, 25, 0, 25)
+    DelBtn.Position = UDim2.new(1, -30, 0, 5)
+    DelBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+    DelBtn.Text = "🗑️"
+    DelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    DelBtn.Font = Enum.Font.Gotham
+    DelBtn.TextSize = 12
+    Instance.new("UICorner", DelBtn).CornerRadius = UDim.new(0, 6)
+    DelBtn.Parent = Row2
 
-    HeaderFrame.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDraggingFrame = false
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            if isDraggingWidget then
-                local delta = input.Position - widgetDragStart
-                WidgetBtn.Position = UDim2.new(widgetStartPos.X.Scale, widgetStartPos.X.Offset + delta.X, widgetStartPos.Y.Scale, widgetStartPos.Y.Offset + delta.Y)
-            elseif isDraggingFrame then
-                local delta = input.Position - frameDragStart
-                MainFrame.Position = UDim2.new(frameStartPos.X.Scale, frameStartPos.X.Offset + delta.X, frameStartPos.Y.Scale, frameStartPos.Y.Offset + delta.Y)
-            end
-        end
-    end)
-
-    -- Container Tombol Aksi
-    local BtnContainer = Instance.new("Frame")
-    BtnContainer.Size = UDim2.new(1, -24, 0, 26)
-    BtnContainer.Position = UDim2.new(0, 12, 0, 42)
-    BtnContainer.BackgroundTransparency = 1
-    BtnContainer.Parent = MainFrame
-
-    local UIListLayout = Instance.new("UIListLayout")
-    UIListLayout.FillDirection = Enum.FillDirection.Horizontal
-    UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    UIListLayout.Padding = UDim.new(0, 8)
-    UIListLayout.Parent = BtnContainer
-
-    local function CreateButton(text, color, width, order)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, width, 1, 0)
-        btn.BackgroundColor3 = color
-        btn.Text = text
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 11
-        btn.LayoutOrder = order
-        btn.Parent = BtnContainer
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
-        return btn
-    end
-
-    local RecBtn = CreateButton("🔴 Record", Color3.fromRGB(200, 50, 50), 85, 1)
-    local PlayPanelBtn = CreateButton("▶️ Play", Color3.fromRGB(40, 120, 200), 85, 2)
-    local PausePanelBtn = CreateButton("⏸️ Pause", Color3.fromRGB(200, 140, 40), 85, 3)
-    local StopPanelBtn = CreateButton("⏹️ Stop", Color3.fromRGB(160, 60, 60), 85, 4)
-    
-    -- EDITOR CONTAINER (Hanya muncul saat Pause)
-    local EditContainer = Instance.new("Frame")
-    EditContainer.Size = UDim2.new(1, -24, 0, 35)
-    EditContainer.Position = UDim2.new(0, 12, 0, 75)
-    EditContainer.BackgroundTransparency = 1
-    EditContainer.Visible = false
-    EditContainer.Parent = MainFrame
+    -- ROW 3: Editor Slider (Hanya muncul saat Pause)
+    local Row3 = Instance.new("Frame")
+    Row3.Size = UDim2.new(1, 0, 0, 50)
+    Row3.BackgroundTransparency = 1
+    Row3.LayoutOrder = 3
+    Row3.Parent = MainFrame
 
     local SliderTrack = Instance.new("Frame")
-    SliderTrack.Size = UDim2.new(0, 240, 0, 4)
-    SliderTrack.Position = UDim2.new(0, 0, 0.5, -2)
-    SliderTrack.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-    SliderTrack.Parent = EditContainer
+    SliderTrack.Size = UDim2.new(1, -90, 0, 6)
+    SliderTrack.Position = UDim2.new(0, 10, 0, 22)
+    SliderTrack.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     Instance.new("UICorner", SliderTrack).CornerRadius = UDim.new(1, 0)
+    SliderTrack.Parent = Row3
 
     local SliderFill = Instance.new("Frame")
     SliderFill.Size = UDim2.new(0, 0, 1, 0)
     SliderFill.BackgroundColor3 = Color3.fromRGB(41, 248, 155)
-    SliderFill.Parent = SliderTrack
     Instance.new("UICorner", SliderFill).CornerRadius = UDim.new(1, 0)
+    SliderFill.Parent = SliderTrack
 
     local SliderKnob = Instance.new("Frame")
-    SliderKnob.Size = UDim2.new(0, 12, 0, 12)
-    SliderKnob.Position = UDim2.new(1, -6, 0.5, -6) 
+    SliderKnob.Size = UDim2.new(0, 14, 0, 14)
+    SliderKnob.Position = UDim2.new(1, -7, 0.5, -7)
     SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    SliderKnob.Parent = SliderFill
     Instance.new("UICorner", SliderKnob).CornerRadius = UDim.new(1, 0)
+    SliderKnob.Parent = SliderFill
 
-    local SliderBtn = Instance.new("TextButton")
-    SliderBtn.Size = UDim2.new(1, 0, 1, 20)
-    SliderBtn.Position = UDim2.new(0, 0, 0, -10)
-    SliderBtn.BackgroundTransparency = 1
-    SliderBtn.Text = ""
-    SliderBtn.Parent = SliderTrack
+    local SliderTouchBtn = Instance.new("TextButton")
+    SliderTouchBtn.Size = UDim2.new(1, 0, 1, 30)
+    SliderTouchBtn.Position = UDim2.new(0, 0, 0, -15)
+    SliderTouchBtn.BackgroundTransparency = 1
+    SliderTouchBtn.Text = ""
+    SliderTouchBtn.Parent = SliderTrack
 
     local CutBtn = Instance.new("TextButton")
-    CutBtn.Size = UDim2.new(0, 120, 0, 24)
-    CutBtn.Position = UDim2.new(1, -120, 0.5, -12)
+    CutBtn.Size = UDim2.new(0, 65, 0, 26)
+    CutBtn.Position = UDim2.new(1, -75, 0, 12)
     CutBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
-    CutBtn.Text = "✂️ Cut & Rekam"
+    CutBtn.Text = "✂️ Cut"
     CutBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     CutBtn.Font = Enum.Font.GothamBold
     CutBtn.TextSize = 11
-    CutBtn.Parent = EditContainer
     Instance.new("UICorner", CutBtn).CornerRadius = UDim.new(0, 5)
+    CutBtn.Parent = Row3
 
-    -- Fungsi Update UI File Cycler
+    -- ==========================================
+    -- LOGIKA ANIMASI & DYNAMIC SIZING
+    -- ==========================================
     local function UpdateFileUI()
         if #availableRecords == 0 then
-            CurrentFileLbl.Text = "Kosong"
+            FileLbl.Text = "Kosong"
         else
-            CurrentFileLbl.Text = availableRecords[currentRecordIndex] or "Error"
+            FileLbl.Text = availableRecords[currentRecordIndex] or "Error"
         end
     end
 
-    -- Logika Perluasan Panel UI
+    local function AnimatePanel(targetWidth, targetHeight)
+        local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, targetWidth, 0, targetHeight)})
+        tween:Play()
+    end
+
     local function UpdatePanelUI()
+        UpdateFileUI()
+
+        if isMinimized then
+            ToggleBtn.Text = isRecording and "🔴" or "🎬"
+            RecBtn.Visible = false
+            PlayBtn.Visible = false
+            PauseBtn.Visible = false
+            StopBtn.Visible = false
+            StatusLbl.Visible = false
+            Row2.Visible = false
+            Row3.Visible = false
+            AnimatePanel(40, 40) -- Shrink menjadi tombol bulat kecil
+            return
+        end
+
+        -- Mode Expanded
+        ToggleBtn.Text = "✖"
+        StatusLbl.Visible = true
+
         if isRecording then
-            MainFrame.Size = UDim2.new(0, 400, 0, 75)
-            RecBtn.Text = "⏹️ Stop"
-            RecBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
             RecBtn.Visible = true
-            PlayPanelBtn.Visible = false
-            PausePanelBtn.Visible = false
-            StopPanelBtn.Visible = false
-            EditContainer.Visible = false
-            FileNavFrame.Visible = false
+            RecBtn.Text = "⏹️"
+            PlayBtn.Visible = false
+            PauseBtn.Visible = false
+            StopBtn.Visible = false
+            Row2.Visible = false
+            Row3.Visible = false
+            AnimatePanel(160, 40) -- Ultra compact saat merekam
+            
         elseif isPlaying then
             RecBtn.Visible = false
-            PlayPanelBtn.Visible = false
-            PausePanelBtn.Visible = true
-            StopPanelBtn.Visible = true
-            FileNavFrame.Visible = false
+            PlayBtn.Visible = false
+            PauseBtn.Visible = true
+            StopBtn.Visible = true
+            Row2.Visible = false
+            
             if isPaused then
-                MainFrame.Size = UDim2.new(0, 400, 0, 120) -- Expand for slider
-                PausePanelBtn.Text = "▶️ Resume"
-                EditContainer.Visible = true
+                PauseBtn.Text = "▶️"
+                Row3.Visible = true
+                AnimatePanel(260, 90) -- Expand ke bawah untuk slider
             else
-                MainFrame.Size = UDim2.new(0, 400, 0, 75)
-                PausePanelBtn.Text = "⏸️ Pause"
-                EditContainer.Visible = false
+                PauseBtn.Text = "⏸️"
+                Row3.Visible = false
+                AnimatePanel(200, 40) -- Compact saat play biasa
             end
+            
         else
-            MainFrame.Size = UDim2.new(0, 400, 0, 75)
-            RecBtn.Text = "🔴 Record"
-            RecBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+            -- Mode Idle
             RecBtn.Visible = true
-            PlayPanelBtn.Visible = true
-            PausePanelBtn.Visible = false
-            StopPanelBtn.Visible = false
-            EditContainer.Visible = false
-            FileNavFrame.Visible = true
+            RecBtn.Text = "🔴"
+            PlayBtn.Visible = true
+            PauseBtn.Visible = false
+            StopBtn.Visible = false
+            Row2.Visible = true
+            Row3.Visible = false
+            AnimatePanel(260, 75) -- Standar size dengan file manager
         end
-        UpdateFileUI()
     end
 
     -- ==========================================
-    -- LOGIKA FILE CYCLER
+    -- LOGIKA DRAG & TOGGLE (Super Presisi)
     -- ==========================================
-    PrevFileBtn.MouseButton1Click:Connect(function()
+    local isDragging = false
+    local dragStart, startPos
+    local hasMoved = false
+
+    ToggleBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = true
+            hasMoved = false
+            dragStart = input.Position
+            startPos = MainFrame.Position
+        end
+    end)
+
+    ToggleBtn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = false
+            if not hasMoved then
+                isMinimized = not isMinimized
+                UpdatePanelUI()
+            end
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            if delta.Magnitude > 5 then hasMoved = true end
+            if hasMoved then
+                MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end
+    end)
+
+    -- ==========================================
+    -- LOGIKA FUNGSI (FILE, REC, PLAY, SLIDER)
+    -- ==========================================
+    PrevBtn.MouseButton1Click:Connect(function()
         if #availableRecords > 0 then
             currentRecordIndex = currentRecordIndex - 1
             if currentRecordIndex < 1 then currentRecordIndex = #availableRecords end
@@ -426,7 +426,7 @@ return function(WindUI, RecordingTab)
         end
     end)
 
-    NextFileBtn.MouseButton1Click:Connect(function()
+    NextBtn.MouseButton1Click:Connect(function()
         if #availableRecords > 0 then
             currentRecordIndex = currentRecordIndex + 1
             if currentRecordIndex > #availableRecords then currentRecordIndex = 1 end
@@ -434,28 +434,23 @@ return function(WindUI, RecordingTab)
         end
     end)
 
-    DeleteFileBtn.MouseButton1Click:Connect(function()
-        if not isUnlocked then return end
-        if #availableRecords == 0 or isPlaying or isRecording then return end
-        
+    DelBtn.MouseButton1Click:Connect(function()
+        if not isUnlocked or #availableRecords == 0 then return end
         local targetFile = availableRecords[currentRecordIndex]
         if RecordsDB[targetFile] then
             RecordsDB[targetFile] = nil
             DeleteRecordFile(targetFile)
-            RefreshAvailableRecords()
+            LoadAllRecords()
+            StatusLbl.Text = " Terhapus."
             UpdatePanelUI()
-            StatusLbl.Text = "Status: File " .. targetFile .. " dihapus."
         end
     end)
 
-    -- ==========================================
-    -- LOGIKA TOMBOL RECORD & PLAYBACK
-    -- ==========================================
     RecBtn.MouseButton1Click:Connect(function()
         if not isRecording then
             isRecording = true
             currentRecordingFrames = {}
-            StatusLbl.Text = "🔴 Merekam..."
+            StatusLbl.Text = " 🔴 Merekam..."
             UpdatePanelUI()
 
             recConn = RunService.Heartbeat:Connect(function()
@@ -468,7 +463,7 @@ return function(WindUI, RecordingTab)
                         vel = hrp.AssemblyLinearVelocity,
                         state = hum:GetState() 
                     })
-                    StatusLbl.Text = "🔴 Merekam: " .. #currentRecordingFrames .. " frames"
+                    StatusLbl.Text = " 🔴 " .. #currentRecordingFrames .. "f"
                 end
             end)
         else
@@ -480,16 +475,14 @@ return function(WindUI, RecordingTab)
                 RecordsDB[recName] = currentRecordingFrames
                 SaveRecordFile(recName, currentRecordingFrames) 
                 
-                RefreshAvailableRecords()
-                
-                -- Auto select file baru
+                LoadAllRecords()
+                -- Auto focus ke file baru
                 for i, v in ipairs(availableRecords) do
                     if v == recName then currentRecordIndex = i break end
                 end
-
-                StatusLbl.Text = "Status: Tersimpan (" .. recName .. ")"
+                StatusLbl.Text = " Disimpan."
             else
-                StatusLbl.Text = "Status: Gagal (Frame kosong!)"
+                StatusLbl.Text = " Frame kosong!"
             end
             UpdatePanelUI()
         end
@@ -507,10 +500,9 @@ return function(WindUI, RecordingTab)
             if isAutoWalkingToStart then
                 local targetPos = data[playbackIndex].cframe.Position
                 local dist = (hrp.Position - targetPos).Magnitude
-                
                 if dist > 3 then
                     hum:MoveTo(targetPos)
-                    StatusLbl.Text = string.format("🚶 Auto-Walk: %d Studs", math.floor(dist))
+                    StatusLbl.Text = string.format(" 🚶 %d Studs", math.floor(dist))
                 else
                     isAutoWalkingToStart = false 
                 end
@@ -531,7 +523,7 @@ return function(WindUI, RecordingTab)
                     else hum:Move(Vector3.zero, false) end
 
                     local percent = math.floor((playbackIndex / #data) * 100)
-                    StatusLbl.Text = string.format("▶️ Memutar: Frame %d / %d (%d%%)", playbackIndex, #data, percent)
+                    StatusLbl.Text = string.format(" ▶ %d%%", percent)
                     SliderFill.Size = UDim2.new(playbackIndex / #data, 0, 1, 0)
                     playbackIndex = playbackIndex + 1
                 else
@@ -542,18 +534,15 @@ return function(WindUI, RecordingTab)
                     
                     isPlaying = false
                     isPaused = false
-                    StatusLbl.Text = "✅ Selesai memutar!"
+                    StatusLbl.Text = " ✅ Selesai."
                     UpdatePanelUI()
                 end
             end
         end)
     end
 
-    PlayPanelBtn.MouseButton1Click:Connect(function()
-        if #availableRecords == 0 then 
-            StatusLbl.Text = "Tidak ada file record!" 
-            return 
-        end
+    PlayBtn.MouseButton1Click:Connect(function()
+        if #availableRecords == 0 then return end
         local selectedFile = availableRecords[currentRecordIndex]
         local data = RecordsDB[selectedFile]
         
@@ -565,11 +554,10 @@ return function(WindUI, RecordingTab)
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         playbackIndex = hrp and FindNearestFrameIndex(data, hrp.Position) or 1
         isAutoWalkingToStart = true 
-        
         StartPlaybackLoop(data)
     end)
 
-    PausePanelBtn.MouseButton1Click:Connect(function()
+    PauseBtn.MouseButton1Click:Connect(function()
         local selectedFile = availableRecords[currentRecordIndex]
         local data = RecordsDB[selectedFile]
         if not data then return end
@@ -581,30 +569,29 @@ return function(WindUI, RecordingTab)
             if char and char:FindFirstChildOfClass("Humanoid") then
                 char:FindFirstChildOfClass("Humanoid"):Move(Vector3.zero, false)
             end
-            StatusLbl.Text = "⏸️ Paused (Edit mode)"
+            StatusLbl.Text = " ⏸️ Paused"
             UpdatePanelUI()
         else
             isPaused = false
-            StatusLbl.Text = "▶️ Resumed"
+            StatusLbl.Text = " ▶️ Resumed"
             UpdatePanelUI()
             StartPlaybackLoop(data)
         end
     end)
 
-    StopPanelBtn.MouseButton1Click:Connect(function()
+    StopBtn.MouseButton1Click:Connect(function()
         if playConn then playConn:Disconnect() end
         local char = lp.Character
         if char and char:FindFirstChildOfClass("Humanoid") then char:FindFirstChildOfClass("Humanoid"):Move(Vector3.zero, false) end
         
         isPlaying = false
         isPaused = false
-        StatusLbl.Text = "⏹️ Dihentikan."
+        StatusLbl.Text = " ⏹️ Stopped"
         UpdatePanelUI()
     end)
 
-    -- Custom Slider Input Logic
     local sliderDragging = false
-    SliderBtn.InputBegan:Connect(function(input)
+    SliderTouchBtn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then sliderDragging = true end
     end)
     UserInputService.InputEnded:Connect(function(input)
@@ -623,7 +610,7 @@ return function(WindUI, RecordingTab)
             local data = RecordsDB[selectedFile]
             if data then
                 playbackIndex = math.max(1, math.floor(percent * #data))
-                StatusLbl.Text = string.format("⏸️ Preview: Frame %d / %d (%d%%)", playbackIndex, #data, math.floor(percent * 100))
+                StatusLbl.Text = string.format(" ⏸ Preview: %d%%", math.floor(percent * 100))
                 
                 local char = lp.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -648,7 +635,7 @@ return function(WindUI, RecordingTab)
         isRecording = true 
         UpdatePanelUI()
         
-        StatusLbl.Text = "🔴 Merekam Sambungan..."
+        StatusLbl.Text = " ✂ Lanjut Rekam..."
         recConn = RunService.Heartbeat:Connect(function()
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -659,29 +646,26 @@ return function(WindUI, RecordingTab)
                     vel = hrp.AssemblyLinearVelocity,
                     state = hum:GetState() 
                 })
-                StatusLbl.Text = "🔴 Lanjut: " .. #currentRecordingFrames .. " frames"
+                StatusLbl.Text = " 🔴 Lanjut: " .. #currentRecordingFrames .. "f"
             end
         end)
     end)
 
     -- ==========================================
-    -- WIND UI (MAIN MENU)
+    -- WIND UI SETUP
     -- ==========================================
     RecordingTab:Paragraph({
-        Title = "Recording System Aktif",
-        Desc = "Sistem manajemen file dan playback sekarang dipindahkan sepenuhnya ke dalam Widget Panel mengambang (Floating UI).",
+        Title = "Kapsul Dynamic Record",
+        Desc = "UI telah dioptimasi untuk mobile. Klik tombol di bawah untuk menampilkan Panel Kapsul.",
         Color = Color3.fromHex("#0F7BFF")
     })
 
     RecordingTab:Button({
-        Title = "🎛️ Buka / Tutup Panel Widget",
+        Title = "🎛️ Buka / Tutup Kapsul",
         Icon = "monitor",
         Callback = function()
             if not isUnlocked then return WindUI:Notify({Title="Akses Ditolak", Content="Hanya untuk myzzkey!", Duration=2}) end
             FloatingUI.Enabled = not FloatingUI.Enabled
-            if FloatingUI.Enabled then
-                WindUI:Notify({Title="Widget Aktif", Content="Widget (🎬) muncul di layar.", Duration=2})
-            end
         end
     })
 
