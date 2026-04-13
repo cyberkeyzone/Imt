@@ -25,6 +25,7 @@ return function(WindUI, RecordingTab)
     local recConn = nil
     local playConn = nil
     local playbackIndex = 1
+    local appendTargetFile = nil -- Menyimpan nama file yang sedang di-edit (Cut & Rekam)
 
     local folderName = "Recording"
     if isfolder and not isfolder(folderName) then makefolder(folderName) end
@@ -134,22 +135,22 @@ return function(WindUI, RecordingTab)
 
     -- Main Frame (Kapsul)
     local MainFrame = Instance.new("Frame")
-    MainFrame.Size = UDim2.new(0, 260, 0, 75) 
-    MainFrame.Position = UDim2.new(0.5, -130, 0.8, -80)
+    MainFrame.Size = UDim2.new(0, 250, 0, 75) 
+    MainFrame.Position = UDim2.new(0.5, -125, 0.8, -80)
     MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-    MainFrame.BackgroundTransparency = 0.2 
+    MainFrame.BackgroundTransparency = 0.15 
     MainFrame.BorderSizePixel = 0
     MainFrame.ClipsDescendants = true
     MainFrame.Parent = FloatingUI
 
     local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(0, 12)
+    UICorner.CornerRadius = UDim.new(0, 14)
     UICorner.Parent = MainFrame
 
     local UIStroke = Instance.new("UIStroke")
     UIStroke.Color = Color3.fromRGB(41, 248, 155)
     UIStroke.Thickness = 1.2
-    UIStroke.Transparency = 0.3
+    UIStroke.Transparency = 0.2
     UIStroke.Parent = MainFrame
 
     local MainLayout = Instance.new("UIListLayout")
@@ -166,11 +167,13 @@ return function(WindUI, RecordingTab)
     local Row1Layout = Instance.new("UIListLayout")
     Row1Layout.FillDirection = Enum.FillDirection.Horizontal
     Row1Layout.SortOrder = Enum.SortOrder.LayoutOrder
+    Row1Layout.Padding = UDim.new(0, 4) -- Jarak antar tombol (tidak dempet)
     Row1Layout.Parent = Row1
 
     local function CreateIconBtn(text, color, isBold)
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 40, 0, 40)
+        btn.Size = UDim2.new(0, 38, 0, 38)
+        btn.Position = UDim2.new(0, 0, 0, 1)
         btn.BackgroundTransparency = 1
         btn.Text = text
         btn.TextColor3 = color
@@ -195,12 +198,12 @@ return function(WindUI, RecordingTab)
     StopBtn.Parent = Row1
 
     local StatusLbl = Instance.new("TextLabel")
-    StatusLbl.Size = UDim2.new(1, -200, 1, 0)
+    StatusLbl.Size = UDim2.new(1, -120, 1, 0) -- Fill sisa lebar dengan aman
     StatusLbl.BackgroundTransparency = 1
     StatusLbl.Text = " Siap."
     StatusLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
     StatusLbl.Font = Enum.Font.Gotham
-    StatusLbl.TextSize = 11
+    StatusLbl.TextSize = 12
     StatusLbl.TextXAlignment = Enum.TextXAlignment.Left
     StatusLbl.Parent = Row1
 
@@ -213,7 +216,7 @@ return function(WindUI, RecordingTab)
 
     local PrevBtn = Instance.new("TextButton")
     PrevBtn.Size = UDim2.new(0, 30, 0, 25)
-    PrevBtn.Position = UDim2.new(0, 5, 0, 5)
+    PrevBtn.Position = UDim2.new(0, 8, 0, 5)
     PrevBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
     PrevBtn.Text = "<"
     PrevBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -223,8 +226,8 @@ return function(WindUI, RecordingTab)
     PrevBtn.Parent = Row2
 
     local FileLbl = Instance.new("TextLabel")
-    FileLbl.Size = UDim2.new(1, -110, 0, 25)
-    FileLbl.Position = UDim2.new(0, 40, 0, 5)
+    FileLbl.Size = UDim2.new(1, -116, 0, 25)
+    FileLbl.Position = UDim2.new(0, 42, 0, 5)
     FileLbl.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
     FileLbl.Text = "Kosong"
     FileLbl.TextColor3 = Color3.fromRGB(220, 220, 220)
@@ -235,7 +238,7 @@ return function(WindUI, RecordingTab)
 
     local NextBtn = Instance.new("TextButton")
     NextBtn.Size = UDim2.new(0, 30, 0, 25)
-    NextBtn.Position = UDim2.new(1, -65, 0, 5)
+    NextBtn.Position = UDim2.new(1, -70, 0, 5)
     NextBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
     NextBtn.Text = ">"
     NextBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -246,7 +249,7 @@ return function(WindUI, RecordingTab)
 
     local DelBtn = Instance.new("TextButton")
     DelBtn.Size = UDim2.new(0, 25, 0, 25)
-    DelBtn.Position = UDim2.new(1, -30, 0, 5)
+    DelBtn.Position = UDim2.new(1, -33, 0, 5)
     DelBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
     DelBtn.Text = "🗑️"
     DelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -257,14 +260,14 @@ return function(WindUI, RecordingTab)
 
     -- ROW 3: Editor Slider & Save Button (Hanya muncul saat Pause)
     local Row3 = Instance.new("Frame")
-    Row3.Size = UDim2.new(1, 0, 0, 60) -- Diperlebar sedikit untuk tombol save
+    Row3.Size = UDim2.new(1, 0, 0, 75) -- Tinggi dinaikkan agar slider mudah disentuh
     Row3.BackgroundTransparency = 1
     Row3.LayoutOrder = 3
     Row3.Parent = MainFrame
 
     local SliderTrack = Instance.new("Frame")
-    SliderTrack.Size = UDim2.new(1, -20, 0, 6)
-    SliderTrack.Position = UDim2.new(0, 10, 0, 12)
+    SliderTrack.Size = UDim2.new(1, -24, 0, 8) -- Track lebih tebal
+    SliderTrack.Position = UDim2.new(0, 12, 0, 15)
     SliderTrack.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     Instance.new("UICorner", SliderTrack).CornerRadius = UDim.new(1, 0)
     SliderTrack.Parent = Row3
@@ -276,39 +279,39 @@ return function(WindUI, RecordingTab)
     SliderFill.Parent = SliderTrack
 
     local SliderKnob = Instance.new("Frame")
-    SliderKnob.Size = UDim2.new(0, 14, 0, 14)
-    SliderKnob.Position = UDim2.new(1, -7, 0.5, -7)
+    SliderKnob.Size = UDim2.new(0, 20, 0, 20) -- Knob super besar untuk jari (Mobile)
+    SliderKnob.Position = UDim2.new(1, -10, 0.5, -10)
     SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     Instance.new("UICorner", SliderKnob).CornerRadius = UDim.new(1, 0)
     SliderKnob.Parent = SliderFill
 
     local SliderTouchBtn = Instance.new("TextButton")
-    SliderTouchBtn.Size = UDim2.new(1, 0, 1, 30)
-    SliderTouchBtn.Position = UDim2.new(0, 0, 0, -15)
+    SliderTouchBtn.Size = UDim2.new(1, 0, 1, 40) -- Area sentuh jauh lebih lebar
+    SliderTouchBtn.Position = UDim2.new(0, 0, 0, -20)
     SliderTouchBtn.BackgroundTransparency = 1
     SliderTouchBtn.Text = ""
     SliderTouchBtn.Parent = SliderTrack
 
     local CutBtn = Instance.new("TextButton")
-    CutBtn.Size = UDim2.new(0, 115, 0, 26)
-    CutBtn.Position = UDim2.new(0, 10, 0, 28)
+    CutBtn.Size = UDim2.new(0, 105, 0, 28)
+    CutBtn.Position = UDim2.new(0, 12, 0, 36)
     CutBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
     CutBtn.Text = "✂️ Cut & Rekam"
     CutBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     CutBtn.Font = Enum.Font.GothamBold
     CutBtn.TextSize = 11
-    Instance.new("UICorner", CutBtn).CornerRadius = UDim.new(0, 5)
+    Instance.new("UICorner", CutBtn).CornerRadius = UDim.new(0, 6)
     CutBtn.Parent = Row3
 
     local SaveEditBtn = Instance.new("TextButton")
-    SaveEditBtn.Size = UDim2.new(0, 115, 0, 26)
-    SaveEditBtn.Position = UDim2.new(1, -125, 0, 28)
+    SaveEditBtn.Size = UDim2.new(0, 105, 0, 28)
+    SaveEditBtn.Position = UDim2.new(1, -117, 0, 36)
     SaveEditBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 230)
     SaveEditBtn.Text = "💾 Simpan Edit"
     SaveEditBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     SaveEditBtn.Font = Enum.Font.GothamBold
     SaveEditBtn.TextSize = 11
-    Instance.new("UICorner", SaveEditBtn).CornerRadius = UDim.new(0, 5)
+    Instance.new("UICorner", SaveEditBtn).CornerRadius = UDim.new(0, 6)
     SaveEditBtn.Parent = Row3
 
     -- ==========================================
@@ -349,13 +352,13 @@ return function(WindUI, RecordingTab)
 
         if isRecording then
             RecBtn.Visible = true
-            RecBtn.Text = "⏹️"
+            RecBtn.Text = "⏹️" -- Tombol Record berubah jadi Stop untuk menghemat UI
             PlayBtn.Visible = false
             PauseBtn.Visible = false
             StopBtn.Visible = false
             Row2.Visible = false
             Row3.Visible = false
-            AnimatePanel(160, 40) 
+            AnimatePanel(190, 40) -- Kompak, tidak menutupi layar saat rekam
             
         elseif isPlaying then
             RecBtn.Visible = false
@@ -367,11 +370,11 @@ return function(WindUI, RecordingTab)
             if isPaused then
                 PauseBtn.Text = "▶️"
                 Row3.Visible = true
-                AnimatePanel(260, 100) -- Expand ke bawah untuk Slider & tombol Save
+                AnimatePanel(250, 115) -- Expand ke bawah untuk Slider Timeline yang besar
             else
                 PauseBtn.Text = "⏸️"
                 Row3.Visible = false
-                AnimatePanel(200, 40) 
+                AnimatePanel(190, 40) 
             end
             
         else
@@ -382,7 +385,7 @@ return function(WindUI, RecordingTab)
             StopBtn.Visible = false
             Row2.Visible = true
             Row3.Visible = false
-            AnimatePanel(260, 75) 
+            AnimatePanel(250, 75) -- Default Panel + File Manager
         end
     end
 
@@ -423,7 +426,7 @@ return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- LOGIKA FUNGSI
+    -- LOGIKA FUNGSI (FILE MANAGER)
     -- ==========================================
     PrevBtn.MouseButton1Click:Connect(function()
         if #availableRecords > 0 then
@@ -453,11 +456,16 @@ return function(WindUI, RecordingTab)
         end
     end)
 
+    -- ==========================================
+    -- LOGIKA RECORD & OVERWRITE
+    -- ==========================================
     RecBtn.MouseButton1Click:Connect(function()
         if not isRecording then
+            -- NORMAL RECORD (Mulai baru)
+            appendTargetFile = nil
             isRecording = true
             currentRecordingFrames = {}
-            StatusLbl.Text = " 🔴 Merekam..."
+            StatusLbl.Text = " Merekam..."
             UpdatePanelUI()
 
             recConn = RunService.Heartbeat:Connect(function()
@@ -470,30 +478,38 @@ return function(WindUI, RecordingTab)
                         vel = hrp.AssemblyLinearVelocity,
                         state = hum:GetState() 
                     })
-                    StatusLbl.Text = " 🔴 " .. #currentRecordingFrames .. "f"
+                    StatusLbl.Text = string.format(" Frame: %d", #currentRecordingFrames)
                 end
             end)
         else
+            -- STOP RECORDING (Simpan)
             isRecording = false
             if recConn then recConn:Disconnect() end
 
             if #currentRecordingFrames > 0 then
-                local recName = GetNextRecordID() 
+                -- Jika punya appendTargetFile (dari Cut & Rekam), gunakan itu. Jika tidak, buat baru.
+                local recName = appendTargetFile or GetNextRecordID() 
                 RecordsDB[recName] = currentRecordingFrames
                 SaveRecordFile(recName, currentRecordingFrames) 
                 
                 LoadAllRecords()
+                -- Auto select file yang baru di-save / dioverwrite
                 for i, v in ipairs(availableRecords) do
                     if v == recName then currentRecordIndex = i break end
                 end
-                StatusLbl.Text = " Disimpan."
+                StatusLbl.Text = " Disimpan: " .. recName
             else
                 StatusLbl.Text = " Frame kosong!"
             end
+            
+            appendTargetFile = nil -- Reset target setelah save
             UpdatePanelUI()
         end
     end)
 
+    -- ==========================================
+    -- LOGIKA PLAYBACK
+    -- ==========================================
     local function StartPlaybackLoop(data)
         if playConn then playConn:Disconnect() end
         playConn = RunService.Heartbeat:Connect(function()
@@ -508,7 +524,7 @@ return function(WindUI, RecordingTab)
                 local dist = (hrp.Position - targetPos).Magnitude
                 if dist > 3 then
                     hum:MoveTo(targetPos)
-                    StatusLbl.Text = string.format(" 🚶 %d Studs", math.floor(dist))
+                    StatusLbl.Text = string.format(" Auto-Walk: %d Studs", math.floor(dist))
                 else
                     isAutoWalkingToStart = false 
                 end
@@ -596,6 +612,9 @@ return function(WindUI, RecordingTab)
         UpdatePanelUI()
     end)
 
+    -- ==========================================
+    -- LOGIKA EDITOR SLIDER & CUT OVERWRITE
+    -- ==========================================
     local sliderDragging = false
     SliderTouchBtn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then sliderDragging = true end
@@ -631,6 +650,9 @@ return function(WindUI, RecordingTab)
         local data = RecordsDB[selectedFile]
         if not data then return end
 
+        -- Kunci utama: Set appendTargetFile agar menimpa file ini saat di-Stop nanti
+        appendTargetFile = selectedFile
+
         local newData = {}
         for i = 1, playbackIndex do table.insert(newData, data[i]) end
         currentRecordingFrames = newData
@@ -641,7 +663,7 @@ return function(WindUI, RecordingTab)
         isRecording = true 
         UpdatePanelUI()
         
-        StatusLbl.Text = " ✂ Lanjut Rekam..."
+        StatusLbl.Text = " ✂ Melanjutkan Rekaman..."
         recConn = RunService.Heartbeat:Connect(function()
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -652,12 +674,11 @@ return function(WindUI, RecordingTab)
                     vel = hrp.AssemblyLinearVelocity,
                     state = hum:GetState() 
                 })
-                StatusLbl.Text = " 🔴 Lanjut: " .. #currentRecordingFrames .. "f"
+                StatusLbl.Text = string.format(" Frame: %d", #currentRecordingFrames)
             end
         end)
     end)
 
-    -- LOGIKA TOMBOL SIMPAN OVERWRITE
     SaveEditBtn.MouseButton1Click:Connect(function()
         if not isPaused then return end
         local selectedFile = availableRecords[currentRecordIndex]
@@ -672,8 +693,9 @@ return function(WindUI, RecordingTab)
         RecordsDB[selectedFile] = newData
         SaveRecordFile(selectedFile, newData)
         
+        -- Update UI agar slider penuh (100%) lagi
+        SliderFill.Size = UDim2.new(1, 0, 1, 0)
         StatusLbl.Text = " 💾 Timpa: " .. selectedFile
-        -- Tetap biarkan di mode pause agar bisa lanjut diedit / ditest play
     end)
 
     -- ==========================================
@@ -681,7 +703,7 @@ return function(WindUI, RecordingTab)
     -- ==========================================
     RecordingTab:Paragraph({
         Title = "Kapsul Dynamic Record",
-        Desc = "UI telah dioptimasi untuk mobile. Klik tombol di bawah untuk menampilkan Panel Kapsul.",
+        Desc = "Sistem Recording telah dipindahkan ke Floating Panel. Klik tombol di bawah untuk menampilkannya.",
         Color = Color3.fromHex("#0F7BFF")
     })
 
