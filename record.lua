@@ -6,6 +6,7 @@ return function(WindUI, RecordingTab)
     local TweenService = game:GetService("TweenService")
     local CoreGui = game:GetService("CoreGui")
     local lp = Players.LocalPlayer
+    local currentPlaceId = game.PlaceId -- Ambil Place ID saat ini
 
     -- ==========================================
     -- VARIABEL SISTEM & STATE
@@ -32,30 +33,41 @@ return function(WindUI, RecordingTab)
     if isfolder and not isfolder(folderName) then makefolder(folderName) end
 
     -- ==========================================
-    -- FUNGSI INTERNAL DATA
+    -- FUNGSI INTERNAL DATA (UPDATE STRUKTUR JSON)
     -- ==========================================
+    
+    -- Format JSON Baru: Menyimpan PlaceId dan Array Frames
     local function SerializeData(framesArray)
-        local serialized = {}
+        local serializedFrames = {}
         for i, frame in ipairs(framesArray) do
-            serialized[i] = {
+            serializedFrames[i] = {
                 cframe = {frame.cframe:GetComponents()},
                 vel = {frame.vel.X, frame.vel.Y, frame.vel.Z},
                 state = frame.state.Name 
             }
         end
-        return serialized
+        
+        -- Bungkus dengan PlaceId
+        return {
+            PlaceId = tostring(currentPlaceId),
+            Frames = serializedFrames
+        }
     end
 
-    local function DeserializeData(jsonFrames)
-        local deserialized = {}
-        for i, frame in ipairs(jsonFrames) do
-            deserialized[i] = {
+    local function DeserializeData(jsonData)
+        local deserializedFrames = {}
+        
+        -- Support untuk format lama (hanya array) dan format baru (object dengan PlaceId)
+        local framesToProcess = jsonData.Frames or jsonData
+        
+        for i, frame in ipairs(framesToProcess) do
+            deserializedFrames[i] = {
                 cframe = CFrame.new(unpack(frame.cframe)),
                 vel = Vector3.new(unpack(frame.vel)),
                 state = Enum.HumanoidStateType[frame.state]
             }
         end
-        return deserialized
+        return deserializedFrames
     end
 
     local function SaveRecordFile(recordName, framesData)
@@ -259,7 +271,7 @@ return function(WindUI, RecordingTab)
     Instance.new("UICorner", DelBtn).CornerRadius = UDim.new(0, 6)
     DelBtn.Parent = Row2
 
-    -- ROW 3: Editor Slider & Save Button 
+    -- ROW 3: Editor Slider & Save Button
     local Row3 = Instance.new("Frame")
     Row3.Size = UDim2.new(1, 0, 0, 75) 
     Row3.BackgroundTransparency = 1
@@ -488,7 +500,6 @@ return function(WindUI, RecordingTab)
             if recConn then recConn:Disconnect() end
 
             if #currentRecordingFrames > 0 then
-                -- Menimpa file yang sama jika masuk dari mode Edit (Cut & Rekam)
                 local recName = appendTargetFile or GetNextRecordID() 
                 RecordsDB[recName] = currentRecordingFrames
                 SaveRecordFile(recName, currentRecordingFrames) 
@@ -606,7 +617,7 @@ return function(WindUI, RecordingTab)
         local char = lp.Character
         if char and char:FindFirstChildOfClass("Humanoid") then char:FindFirstChildOfClass("Humanoid"):Move(Vector3.zero, false) end
         
-        countdownActive = false -- Batalkan jika stop ditekan saat hitung mundur
+        countdownActive = false 
         isPlaying = false
         isPaused = false
         StatusLbl.Text = " ⏹️ Stopped"
@@ -656,10 +667,8 @@ return function(WindUI, RecordingTab)
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum then return end
 
-        -- OTOMATIS DETEKSI POSISI TERDEKAT (Mencegah hasil patah-patah)
         local bestIndex = FindNearestFrameIndex(data, hrp.Position)
         playbackIndex = bestIndex
-
         appendTargetFile = selectedFile
 
         local newData = {}
@@ -674,9 +683,7 @@ return function(WindUI, RecordingTab)
         
         countdownActive = true
         
-        -- HITUNG MUNDUR 2 DETIK AGAR BISA TEKAN TOMBOL GERAK
         task.spawn(function()
-            -- Injeksi Fisik Asli
             hrp.CFrame = data[playbackIndex].cframe
             hrp.AssemblyLinearVelocity = data[playbackIndex].vel
             hum:ChangeState(data[playbackIndex].state)
