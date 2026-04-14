@@ -21,6 +21,7 @@ return function(WindUI, TeleportTab)
     
     local isAutoLooping = false
     local isAutoSequence = false
+    local isStealthMode = false -- Mode Anti-Admin
 
     -- FUNGSI SERIALISASI
     local function SerializeCPs()
@@ -118,10 +119,9 @@ return function(WindUI, TeleportTab)
     end
 
     -- ==========================================
-    -- FUNGSI GAIB: MULTI-STAGE UI CLICKER (YES/NO)
+    -- FUNGSI GAIB: MULTI-STAGE UI CLICKER (YES/NO) TIMING FIX
     -- ==========================================
     local function AttemptResetCheckpointGameUI()
-        -- 1. Scan Remote Event (Cepat)
         for _, v in ipairs(game:GetDescendants()) do
             if v:IsA("RemoteEvent") then
                 local name = string.lower(v.Name)
@@ -131,12 +131,10 @@ return function(WindUI, TeleportTab)
             end
         end
 
-        -- 2. Sistem Klik Layar UI Bertahap (Multi-Stage)
         local fireClick = getgenv().firesignal or firesignal
         local pg = lp:FindFirstChild("PlayerGui")
         
         if fireClick and pg then
-            -- Fungsi pembantu untuk memindai dan mengeklik tombol berdasarkan kata kunci
             local function scanAndClick(keywords)
                 local clicked = false
                 for _, gui in ipairs(pg:GetDescendants()) do
@@ -154,20 +152,39 @@ return function(WindUI, TeleportTab)
                 return clicked
             end
 
-            -- TAHAP 1: Klik tombol Reset / Basecamp
+            -- Tahap 1: Klik Reset
             local clickedReset = scanAndClick({"reset", "basecamp", "restart"})
             
-            -- TAHAP 2: Jika tombol reset berhasil diklik, tunggu pop-up lalu klik YES/Confirm
+            -- Tahap 2: Tunggu POP-UP muncul, baru klik YES
             if clickedReset then
-                task.wait(0.3) -- Jeda animasi pop-up konfirmasi muncul
-                scanAndClick({"yes", "confirm", "ya", "ok", "setuju", "sure"})
-                task.wait(0.2) -- Jeda server mereset data kita
+                task.wait(1) -- Jeda 1 Detik agar UI muncul sempurna
+                scanAndClick({"yes", "confirm", "ya", "ok", "setuju", "sure", "accept"})
+                task.wait(1.5) -- Jeda 1.5 Detik agar server mereset data karakter
             end
         end
     end
 
     -- ==========================================
-    -- INISIALISASI MESIN (BYPASS & LOAD)
+    -- FUNGSI RADAR STEALTH (ANTI-ADMIN)
+    -- ==========================================
+    local function IsPlayerNear(targetPosition, radius)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character then
+                local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
+                local pHealth = p.Character:FindFirstChild("Humanoid")
+                if pRoot and pHealth and pHealth.Health > 0 then
+                    local dist = (pRoot.Position - targetPosition).Magnitude
+                    if dist <= radius then
+                        return true, p.Name
+                    end
+                end
+            end
+        end
+        return false, ""
+    end
+
+    -- ==========================================
+    -- INISIALISASI MESIN
     -- ==========================================
     local isLoaded = LoadCacheFromDevice()
     if isLoaded then
@@ -188,7 +205,7 @@ return function(WindUI, TeleportTab)
     -- ==========================================
     TeleportTab:Paragraph({
         Title = "Teleport (Permanent Cache)",
-        Desc = "Gunakan Auto Loop Sequence (Smart) untuk pendakian gunung otomatis yang sangat rapi!",
+        Desc = "Dilengkapi Smart Logic agar loop tidak pernah putus & Stealth Mode untuk menghindari ban/admin.",
         Color = Color3.fromHex("#F89B29")
     })
 
@@ -215,6 +232,12 @@ return function(WindUI, TeleportTab)
             if hrp then
                 local targetCFrame = CPCache[selectedCP]
                 if targetCFrame then
+                    if isStealthMode then
+                        local isNear, pName = IsPlayerNear(targetCFrame.Position, 80)
+                        if isNear then
+                            return WindUI:Notify({Title="Bahaya!", Content="Ada player ("..pName..") di tujuan! Teleport dibatalkan untuk keamanan.", Duration=3, Icon="x"})
+                        end
+                    end
                     pcall(function() lp:RequestStreamAroundAsync(targetCFrame.Position) end)
                     hrp.CFrame = targetCFrame
                     WindUI:Notify({Title="Zhoosh!", Content="Teleport ke " .. selectedCP, Duration=1.5})
@@ -223,6 +246,20 @@ return function(WindUI, TeleportTab)
                 end
             else
                 WindUI:Notify({Title="Gagal", Content="Karaktermu belum spawn!", Duration=2})
+            end
+        end
+    })
+
+    TeleportTab:Divider()
+
+    -- TOGGLE STEALTH MODE
+    TeleportTab:Toggle({
+        Title = "🕵️ Stealth Mode (Anti-Admin/Player)",
+        Default = false,
+        Callback = function(state)
+            isStealthMode = state
+            if isStealthMode then
+                WindUI:Notify({Title="Stealth Aktif", Content="Script akan menghindari teleport jika ada orang di dekat Checkpoint.", Duration=2, Icon="check"})
             end
         end
     })
@@ -244,26 +281,48 @@ return function(WindUI, TeleportTab)
                     return
                 end
                 
-                WindUI:Notify({Title="Auto Loop", Content="Memulai farming dari titik Awal ke Akhir (Jeda 5 Detik)...", Duration=2, Icon="check"})
+                WindUI:Notify({Title="Auto Loop", Content="Memulai farming... (Jeda 5 Detik)", Duration=2, Icon="check"})
+                
                 task.spawn(function()
                     while isAutoLooping do
                         local char = lp.Character
                         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                        if hrp then
+                        local hum = char and char:FindFirstChild("Humanoid")
+                        
+                        -- Pengecekan karakter yang lebih kuat (Anti-Stuck)
+                        if hrp and hum and hum.Health > 0 then
                             local firstCFrame = CPCache[CPList[1]]
                             local lastCFrame = CPCache[CPList[#CPList]]
                             
                             if firstCFrame and lastCFrame then
-                                AttemptResetCheckpointGameUI() -- Coba klik reset UI
+                                -- TELEPORT KE BASE
+                                AttemptResetCheckpointGameUI() 
                                 pcall(function() lp:RequestStreamAroundAsync(firstCFrame.Position) end)
                                 hrp.CFrame = firstCFrame
                                 task.wait(5)
+                                
                                 if not isAutoLooping then break end
+                                
+                                -- CEK STEALTH SEBELUM KE SUMMIT
+                                if isStealthMode then
+                                    local isNear, pName = IsPlayerNear(lastCFrame.Position, 80)
+                                    if isNear then
+                                        WindUI:Notify({Title="Stealth", Content="Menunggu " .. pName .. " pergi dari Summit...", Duration=2})
+                                        task.wait(3) -- Tunggu bentar lalu lanjut loop awal (tidak maksa tele)
+                                        continue
+                                    end
+                                end
+
+                                -- TELEPORT KE SUMMIT
                                 pcall(function() lp:RequestStreamAroundAsync(lastCFrame.Position) end)
                                 hrp.CFrame = lastCFrame
                                 task.wait(5)
-                            else task.wait(0.5) end
-                        else task.wait(1) end
+                            else 
+                                task.wait(0.5) 
+                            end
+                        else 
+                            task.wait(1.5) -- Tunggu karakter respawn agar loop tidak mati
+                        end
                     end
                 end)
             else
@@ -272,9 +331,9 @@ return function(WindUI, TeleportTab)
         end
     })
 
-    -- FITUR 2: AUTO LOOP SEQUENCE (SMART RESUME & AUTO YES/NO)
+    -- FITUR 2: AUTO LOOP SEQUENCE (SMART RESUME + STEALTH)
     TeleportTab:Toggle({
-        Title = "▶️ Auto Loop Sequence (Smart Resume)",
+        Title = "▶️ Auto Loop Sequence (Smart + Stealth)",
         Default = false,
         Callback = function(state)
             isAutoSequence = state
@@ -290,9 +349,6 @@ return function(WindUI, TeleportTab)
                 local char = lp.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 
-                -- ==========================================
-                -- ALGORITMA SMART RESUME (CARI POSISI SAAT INI)
-                -- ==========================================
                 local startIndex = 1
                 if hrp then
                     local minDis = math.huge
@@ -314,34 +370,49 @@ return function(WindUI, TeleportTab)
                     local currentIndex = startIndex
                     
                     while isAutoSequence do
-                        for i = currentIndex, #CPList do
-                            if not isAutoSequence then break end
-                            
-                            local cChar = lp.Character
-                            local cHrp = cChar and cChar:FindFirstChild("HumanoidRootPart")
-                            
-                            if cHrp then
-                                -- JIKA BERADA DI BASE (Index 1) -> TRIGGER AUTO RESET YES/NO
-                                if i == 1 then
-                                    AttemptResetCheckpointGameUI()
-                                    task.wait(0.5) -- Beri waktu sistem UI dan server memproses reset total
-                                end
-
-                                local targetCFrame = CPCache[CPList[i]]
-                                if targetCFrame then
-                                    pcall(function() lp:RequestStreamAroundAsync(targetCFrame.Position) end)
-                                    cHrp.AssemblyLinearVelocity = Vector3.zero
-                                    cHrp.CFrame = targetCFrame
-                                    task.wait(0.3) -- Jeda emas 0.3 dtk agar game mendeteksi sentuhan
-                                end
-                            else
-                                task.wait(1) 
-                            end
+                        -- Jika sudah sampai ujung, reset kembali ke 1
+                        if currentIndex > #CPList then
+                            currentIndex = 1
+                            task.wait(1)
                         end
+
+                        local cpName = CPList[currentIndex]
+                        local targetCFrame = CPCache[cpName]
+
+                        local cChar = lp.Character
+                        local cHrp = cChar and cChar:FindFirstChild("HumanoidRootPart")
+                        local cHum = cChar and cChar:FindFirstChild("Humanoid")
                         
-                        -- Jika selesai sampai ujung (Summit), Reset ke 1 untuk loop kembali
-                        currentIndex = 1
-                        if isAutoSequence then task.wait(1) end
+                        -- Pastikan karakter hidup (Anti-Stuck jika mati di jalan)
+                        if cHrp and cHum and cHum.Health > 0 and targetCFrame then
+                            
+                            -- JIKA DI BASE -> TRIGGER UI RESET
+                            if currentIndex == 1 then
+                                AttemptResetCheckpointGameUI()
+                            end
+
+                            -- FITUR STEALTH: Tahan posisi jika ada orang
+                            if isStealthMode then
+                                local isNear, pName = IsPlayerNear(targetCFrame.Position, 80)
+                                if isNear then
+                                    WindUI:Notify({Title="Stealth", Content="Menunggu " .. pName .. " menjauh dari " .. cpName, Duration=1})
+                                    task.wait(2)
+                                    continue -- Ulangi iterasi while tanpa menambah currentIndex
+                                end
+                            end
+
+                            -- PROSES TELEPORT
+                            pcall(function() lp:RequestStreamAroundAsync(targetCFrame.Position) end)
+                            cHrp.AssemblyLinearVelocity = Vector3.zero
+                            cHrp.CFrame = targetCFrame
+                            task.wait(0.4) -- Jeda emas mendeteksi sentuhan
+
+                            -- Pindah ke CP selanjutnya HANYA JIKA teleport sukses
+                            currentIndex = currentIndex + 1
+                        else
+                            -- Jika karakter mati, tunggu 1.5 detik agar respawn, loop TIDAK akan batal
+                            task.wait(1.5) 
+                        end
                     end
                 end)
             else
@@ -359,9 +430,9 @@ return function(WindUI, TeleportTab)
                 pcall(function() delfile(saveFileName) end)
                 CPCache = {}
                 UpdateDropdown()
-                WindUI:Notify({Title="Terhapus", Content="Semua data Checkpoint untuk map ini telah di-reset.", Duration=2})
+                WindUI:Notify({Title="Terhapus", Content="Semua data Checkpoint telah di-reset.", Duration=2})
             else
-                WindUI:Notify({Title="Info", Content="Tidak ada data tersimpan untuk map ini.", Duration=2})
+                WindUI:Notify({Title="Info", Content="Tidak ada data tersimpan.", Duration=2})
             end
         end
     })
