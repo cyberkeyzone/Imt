@@ -204,7 +204,7 @@ return function(WindUI, TeleportTab)
 
     TeleportTab:Divider()
 
-    -- FITUR BARU: AUTO LOOP TELEPORT (FARM)
+    -- FITUR AUTO LOOP TELEPORT (FARM)
     TeleportTab:Toggle({
         Title = "🔁 Auto Loop Teleport (Farm)",
         Default = false,
@@ -218,7 +218,7 @@ return function(WindUI, TeleportTab)
                     return
                 end
                 
-                WindUI:Notify({Title="Auto Loop", Content="Memulai farming dari titik Awal ke Akhir...", Duration=2, Icon="check"})
+                WindUI:Notify({Title="Auto Loop", Content="Memulai farming dari titik Awal ke Akhir (Jeda 5 Detik)...", Duration=2, Icon="check"})
                 
                 task.spawn(function()
                     while isAutoLooping do
@@ -237,15 +237,15 @@ return function(WindUI, TeleportTab)
                                 -- 1. Teleport ke Awal (Base/0)
                                 pcall(function() lp:RequestStreamAroundAsync(firstCFrame.Position) end)
                                 hrp.CFrame = firstCFrame
-                                task.wait(0.5) -- Delay 0.5 Detik
+                                task.wait(5) -- Delay diubah menjadi 5 Detik
                                 
-                                -- Pastikan belum dimatikan saat delay
+                                -- Pastikan toggle belum dimatikan saat sedang menunggu delay
                                 if not isAutoLooping then break end
                                 
                                 -- 2. Teleport ke Akhir (Summit/Max)
                                 pcall(function() lp:RequestStreamAroundAsync(lastCFrame.Position) end)
                                 hrp.CFrame = lastCFrame
-                                task.wait(0.5) -- Delay 0.5 Detik
+                                task.wait(5) -- Delay diubah menjadi 5 Detik
                             else
                                 task.wait(0.5)
                             end
