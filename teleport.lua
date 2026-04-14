@@ -22,6 +22,7 @@ return function(WindUI, TeleportTab)
     local isAutoLooping = false
     local isAutoSequence = false
     local isStealthMode = false
+    local isAdd50kSummit = false -- State Injector 50k
 
     -- FUNGSI SERIALISASI
     local function SerializeCPs()
@@ -119,7 +120,74 @@ return function(WindUI, TeleportTab)
     end
 
     -- ==========================================
-    -- FUNGSI GAIB: MULTI-STAGE UI CLICKER (ANTI-SPAM)
+    -- FUNGSI GAIB: INJECTOR 50K SUMMIT WINS
+    -- ==========================================
+    local function AttemptInject50k(finalCFrame)
+        local fireTouch = (typeof(firetouchinterest) == "function" and firetouchinterest) or (getgenv and getgenv().firetouchinterest)
+        local finalPart = nil
+        
+        -- Cari part asli dari CFrame (dikurangi 3 stud karena sebelumnya kita simpan +3 ke atas)
+        local searchPos = finalCFrame.Position - Vector3.new(0, 3, 0)
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("BasePart") then
+                if (v.Position - searchPos).Magnitude < 10 then
+                    finalPart = v
+                    break
+                end
+            end
+        end
+
+        WindUI:Notify({Title="Menyuntik...", Content="Sedang mengeksekusi 50.000 klaim Summit. Jangan keluar...", Duration=3})
+        
+        -- Cari RemoteEvent tersembunyi di sekitar part akhir (biasanya untuk ngasih reward)
+        local remotes = {}
+        if finalPart and finalPart.Parent then
+            for _, r in ipairs(finalPart.Parent:GetDescendants()) do
+                if r:IsA("RemoteEvent") then table.insert(remotes, r) end
+            end
+        end
+        -- Cari juga di ReplicatedStorage (Penyimpanan global server)
+        for _, r in ipairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
+            if r:IsA("RemoteEvent") then
+                local rn = string.lower(r.Name)
+                if string.match(rn, "win") or string.match(rn, "summit") or string.match(rn, "reward") or string.match(rn, "finish") then
+                    table.insert(remotes, r)
+                end
+            end
+        end
+
+        local char = lp.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if hrp then
+            -- LOOP INJEKSI: 50.000 KALI
+            for i = 1, 50000 do
+                if not isAdd50kSummit then break end -- Bisa dibatalkan jika toggle dimatikan
+                
+                -- Metode 1: Spam Sentuhan (Menipu Script Server "Touched" Event)
+                if finalPart and fireTouch then
+                    pcall(function()
+                        fireTouch(hrp, finalPart, 0) -- Mulai Sentuh
+                        fireTouch(hrp, finalPart, 1) -- Lepas Sentuhan
+                    end)
+                end
+                
+                -- Metode 2: Spam Sinyal Remote Server
+                for _, r in ipairs(remotes) do
+                    pcall(function() r:FireServer() end)
+                end
+                
+                -- Anti-Crash Client: Jeda sangat singkat setiap 500 klaim agar HP kamu tidak meledak/lag
+                if i % 500 == 0 then
+                    task.wait() 
+                end
+            end
+            WindUI:Notify({Title="Sukses 💉", Content="Suntikan 50.000 Summit/Wins telah ditambahkan!", Duration=4, Icon="check"})
+        end
+    end
+
+    -- ==========================================
+    -- FUNGSI GAIB: MULTI-STAGE UI CLICKER
     -- ==========================================
     local function AttemptResetCheckpointGameUI()
         for _, v in ipairs(game:GetDescendants()) do
@@ -152,12 +220,9 @@ return function(WindUI, TeleportTab)
                 return clicked
             end
 
-            -- Tahap 1: Klik Reset
             local clickedReset = scanAndClick({"reset", "basecamp", "restart"})
-            
-            -- Tahap 2: Tunggu POP-UP muncul, baru klik YES
             if clickedReset then
-                task.wait(0.8) -- Sedikit dipercepat agar tidak lama nunggu
+                task.wait(0.8) 
                 scanAndClick({"yes", "confirm", "ya", "ok", "setuju", "sure", "accept"})
                 task.wait(1) 
             end
@@ -165,10 +230,9 @@ return function(WindUI, TeleportTab)
     end
 
     -- ==========================================
-    -- FUNGSI RADAR STEALTH (OUT OF SIGHT)
+    -- FUNGSI RADAR STEALTH
     -- ==========================================
     local function IsPlayerNear(targetPosition)
-        -- Radius 150 adalah rata-rata jarak pandang layar player normal
         local safeRadius = 150 
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= lp and p.Character then
@@ -185,9 +249,7 @@ return function(WindUI, TeleportTab)
         return false, ""
     end
 
-    -- FUNGSI ANTI-MACET UNTUK STREAMING ENABLED
     local function SafeRequestStream(pos)
-        -- Dibungkus task.spawn agar tidak membekukan seluruh script jika server lag
         task.spawn(function()
             pcall(function() lp:RequestStreamAroundAsync(pos) end)
         end)
@@ -215,7 +277,7 @@ return function(WindUI, TeleportTab)
     -- ==========================================
     TeleportTab:Paragraph({
         Title = "Teleport (Permanent Cache)",
-        Desc = "Dilengkapi Smart Logic V2 agar loop tidak pernah putus & Stealth Mode untuk keamanan ekstra.",
+        Desc = "Dilengkapi Smart Logic V2, Stealth Mode, dan Injector 50.000 Wins!",
         Color = Color3.fromHex("#F89B29")
     })
 
@@ -268,8 +330,17 @@ return function(WindUI, TeleportTab)
         Default = false,
         Callback = function(state)
             isStealthMode = state
-            if isStealthMode then
-                WindUI:Notify({Title="Stealth Aktif", Content="Script akan sembunyi jika ada orang di layar/tujuan.", Duration=2, Icon="check"})
+        end
+    })
+
+    -- TOGGLE INJECTOR 50K WINS
+    TeleportTab:Toggle({
+        Title = "💉 Auto Inject 50k Summit",
+        Default = false,
+        Callback = function(state)
+            isAdd50kSummit = state
+            if isAdd50kSummit then
+                WindUI:Notify({Title="Injector Aktif", Content="Akan menyuntik 50.000 Wins otomatis setiap mencapai Summit!", Duration=3, Icon="check"})
             end
         end
     })
@@ -286,7 +357,6 @@ return function(WindUI, TeleportTab)
             
             if isAutoLooping then
                 if #CPList < 2 or CPList[1] == "Belum ada CP terdeteksi" then
-                    WindUI:Notify({Title="Gagal", Content="Minimal butuh 2 Checkpoint untuk melakukan Auto Loop!", Duration=3, Icon="x"})
                     isAutoLooping = false
                     return
                 end
@@ -295,7 +365,7 @@ return function(WindUI, TeleportTab)
                 
                 task.spawn(function()
                     local lastNotifyTime = 0
-                    local hasResetBase = false -- Kunci agar tidak spam UI Reset
+                    local hasResetBase = false
                     
                     while isAutoLooping do
                         local char = lp.Character
@@ -307,7 +377,7 @@ return function(WindUI, TeleportTab)
                             local lastCFrame = CPCache[CPList[#CPList]]
                             
                             if firstCFrame and lastCFrame then
-                                -- TELEPORT KE BASE
+                                -- BASE
                                 if not hasResetBase then
                                     AttemptResetCheckpointGameUI() 
                                     hasResetBase = true
@@ -316,14 +386,12 @@ return function(WindUI, TeleportTab)
                                 SafeRequestStream(firstCFrame.Position)
                                 hrp.CFrame = firstCFrame
                                 task.wait(5)
-                                
                                 if not isAutoLooping then break end
                                 
-                                -- CEK STEALTH
+                                -- STEALTH
                                 if isStealthMode then
                                     local isNear, pName = IsPlayerNear(lastCFrame.Position)
                                     if isNear then
-                                        -- Anti Spam Notifikasi (Maksimal notif tiap 4 detik)
                                         if os.clock() - lastNotifyTime > 4 then
                                             WindUI:Notify({Title="Stealth", Content="Sembunyi dari " .. pName .. "...", Duration=2})
                                             lastNotifyTime = os.clock()
@@ -333,11 +401,18 @@ return function(WindUI, TeleportTab)
                                     end
                                 end
 
-                                -- TELEPORT KE SUMMIT
+                                -- SUMMIT
                                 SafeRequestStream(lastCFrame.Position)
                                 hrp.CFrame = lastCFrame
-                                hasResetBase = false -- Buka kunci reset untuk putaran berikutnya
-                                task.wait(5)
+                                hasResetBase = false 
+                                task.wait(1) -- Beri waktu sedikit sebelum injeksi
+
+                                -- INJEKSI 50K WINS
+                                if isAdd50kSummit then
+                                    AttemptInject50k(lastCFrame)
+                                else
+                                    task.wait(4)
+                                end
                             else 
                                 task.wait(0.5) 
                             end
@@ -346,13 +421,11 @@ return function(WindUI, TeleportTab)
                         end
                     end
                 end)
-            else
-                WindUI:Notify({Title="Berhenti", Content="Auto Loop Farm dimatikan.", Duration=1.5})
             end
         end
     })
 
-    -- FITUR 2: AUTO LOOP SEQUENCE (SMART RESUME + STEALTH)
+    -- FITUR 2: AUTO LOOP SEQUENCE
     TeleportTab:Toggle({
         Title = "▶️ Auto Loop Sequence (Smart + Stealth)",
         Default = false,
@@ -362,15 +435,14 @@ return function(WindUI, TeleportTab)
 
             if isAutoSequence then
                 if #CPList < 2 or CPList[1] == "Belum ada CP terdeteksi" then
-                    WindUI:Notify({Title="Gagal", Content="Minimal butuh 2 Checkpoint untuk melakukan Sequence!", Duration=3, Icon="x"})
                     isAutoSequence = false
                     return
                 end
                 
                 local char = lp.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                
                 local startIndex = 1
+                
                 if hrp then
                     local minDis = math.huge
                     for i, cpName in ipairs(CPList) do
@@ -385,18 +457,17 @@ return function(WindUI, TeleportTab)
                     end
                 end
                 
-                WindUI:Notify({Title="Sequence", Content="Melanjutkan otomatis dari " .. CPList[startIndex] .. "!", Duration=3, Icon="check"})
+                WindUI:Notify({Title="Sequence", Content="Melanjutkan dari " .. CPList[startIndex] .. "!", Duration=3, Icon="check"})
                 
                 task.spawn(function()
                     local currentIndex = startIndex
-                    local hasResetThisLap = false -- Kunci Anti-Spam Reset
+                    local hasResetThisLap = false
                     local lastNotifyTime = 0
                     
                     while isAutoSequence do
-                        -- Lapis keamanan: Jika currentIndex bablas, reset ke Base
                         if currentIndex > #CPList then
                             currentIndex = 1
-                            hasResetThisLap = false -- Putaran baru, boleh reset base lagi
+                            hasResetThisLap = false
                             task.wait(1)
                         end
 
@@ -409,13 +480,13 @@ return function(WindUI, TeleportTab)
                         
                         if cHrp and cHum and cHum.Health > 0 and targetCFrame then
                             
-                            -- JIKA DI BASE -> TRIGGER UI RESET (HANYA 1 KALI PER PUTARAN)
+                            -- JIKA DI BASE
                             if currentIndex == 1 and not hasResetThisLap then
                                 AttemptResetCheckpointGameUI()
                                 hasResetThisLap = true
                             end
 
-                            -- FITUR STEALTH
+                            -- STEALTH
                             if isStealthMode then
                                 local isNear, pName = IsPlayerNear(targetCFrame.Position)
                                 if isNear then
@@ -424,15 +495,20 @@ return function(WindUI, TeleportTab)
                                         lastNotifyTime = os.clock()
                                     end
                                     task.wait(2)
-                                    continue -- Ulangi iterasi tanpa nambah indeks (berhenti di tempat)
+                                    continue 
                                 end
                             end
 
-                            -- PROSES TELEPORT (Anti-Macet)
+                            -- TELEPORT
                             SafeRequestStream(targetCFrame.Position)
                             cHrp.AssemblyLinearVelocity = Vector3.zero
                             cHrp.CFrame = targetCFrame
                             task.wait(0.4) 
+
+                            -- JIKA MENCAPAI SUMMIT (CP TERAKHIR) & INJEKSI AKTIF
+                            if currentIndex == #CPList and isAdd50kSummit then
+                                AttemptInject50k(targetCFrame)
+                            end
 
                             currentIndex = currentIndex + 1
                         else
@@ -440,8 +516,6 @@ return function(WindUI, TeleportTab)
                         end
                     end
                 end)
-            else
-                WindUI:Notify({Title="Berhenti", Content="Auto Loop Sequence dimatikan.", Duration=1.5})
             end
         end
     })
