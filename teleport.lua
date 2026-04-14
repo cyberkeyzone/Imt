@@ -19,7 +19,8 @@ return function(WindUI, TeleportTab)
     local selectedCP = ""
     local CPDropdown
     
-    local isAutoLooping = false -- State untuk Auto Farm
+    local isAutoLooping = false -- State untuk Auto Farm (Base -> Summit)
+    local isAutoSequence = false -- State untuk Auto Sequence (Urut 1 per 1)
 
     -- FUNGSI SERIALISASI
     local function SerializeCPs()
@@ -130,6 +131,7 @@ return function(WindUI, TeleportTab)
             if tonumber(cpName) then cpName = "CP " .. cpName end
             
             if not CPCache[cpName] then
+                -- Menyimpan posisi 3 stud di atas CP agar karakter jatuh dan menyentuh pad (Memicu event Touched)
                 CPCache[cpName] = part.CFrame + Vector3.new(0, 3, 0)
                 SaveCacheToDevice() 
                 UpdateDropdown()
@@ -163,7 +165,7 @@ return function(WindUI, TeleportTab)
     -- ==========================================
     TeleportTab:Paragraph({
         Title = "Teleport (Permanent Cache)",
-        Desc = "Checkpoint disimpan otomatis secara permanen. Gunakan fitur Auto Loop untuk auto-farming otomatis dari Base ke Summit!",
+        Desc = "Checkpoint disimpan otomatis secara permanen. Gunakan fitur Loop untuk farming otomatis!",
         Color = Color3.fromHex("#F89B29")
     })
 
@@ -204,12 +206,15 @@ return function(WindUI, TeleportTab)
 
     TeleportTab:Divider()
 
-    -- FITUR AUTO LOOP TELEPORT (FARM)
+    -- FITUR 1: AUTO LOOP TELEPORT FARM (Base -> Summit)
     TeleportTab:Toggle({
-        Title = "🔁 Auto Loop Teleport (Farm)",
+        Title = "🔁 Auto Loop Teleport (Farm Base -> Summit)",
         Default = false,
         Callback = function(state)
             isAutoLooping = state
+            
+            -- Matikan Sequence jika dinyalakan bersamaan
+            if isAutoLooping and isAutoSequence then isAutoSequence = false end
             
             if isAutoLooping then
                 if #CPList < 2 or CPList[1] == "Belum ada CP terdeteksi" then
@@ -226,7 +231,6 @@ return function(WindUI, TeleportTab)
                         local hrp = char and char:FindFirstChild("HumanoidRootPart")
                         
                         if hrp then
-                            -- Ambil CP Pertama dan Terakhir berdasarkan Smart Sorting
                             local firstCPName = CPList[1]
                             local lastCPName = CPList[#CPList]
                             
@@ -234,28 +238,83 @@ return function(WindUI, TeleportTab)
                             local lastCFrame = CPCache[lastCPName]
                             
                             if firstCFrame and lastCFrame then
-                                -- 1. Teleport ke Awal (Base/0)
                                 pcall(function() lp:RequestStreamAroundAsync(firstCFrame.Position) end)
                                 hrp.CFrame = firstCFrame
-                                task.wait(5) -- Delay diubah menjadi 5 Detik
+                                task.wait(5)
                                 
-                                -- Pastikan toggle belum dimatikan saat sedang menunggu delay
                                 if not isAutoLooping then break end
                                 
-                                -- 2. Teleport ke Akhir (Summit/Max)
                                 pcall(function() lp:RequestStreamAroundAsync(lastCFrame.Position) end)
                                 hrp.CFrame = lastCFrame
-                                task.wait(5) -- Delay diubah menjadi 5 Detik
+                                task.wait(5)
                             else
                                 task.wait(0.5)
                             end
                         else
-                            task.wait(1) -- Tunggu jika karakter mati/belum spawn
+                            task.wait(1) 
                         end
                     end
                 end)
             else
-                WindUI:Notify({Title="Berhenti", Content="Auto Loop dimatikan.", Duration=1.5})
+                WindUI:Notify({Title="Berhenti", Content="Auto Loop Farm dimatikan.", Duration=1.5})
+            end
+        end
+    })
+
+    -- FITUR 2: AUTO LOOP SEQUENCE (Berurutan 1 per 1 dengan Cepat)
+    TeleportTab:Toggle({
+        Title = "▶️ Auto Loop Sequence (Teleport Berurutan)",
+        Default = false,
+        Callback = function(state)
+            isAutoSequence = state
+            
+            -- Matikan Farm jika dinyalakan bersamaan
+            if isAutoSequence and isAutoLooping then isAutoLooping = false end
+
+            if isAutoSequence then
+                if #CPList < 2 or CPList[1] == "Belum ada CP terdeteksi" then
+                    WindUI:Notify({Title="Gagal", Content="Minimal butuh 2 Checkpoint untuk melakukan Sequence!", Duration=3, Icon="x"})
+                    isAutoSequence = false
+                    return
+                end
+                
+                WindUI:Notify({Title="Sequence", Content="Melaju berurutan dari Base ke Summit!", Duration=2, Icon="check"})
+                
+                task.spawn(function()
+                    while isAutoSequence do
+                        for i = 1, #CPList do
+                            if not isAutoSequence then break end
+                            
+                            local char = lp.Character
+                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                            
+                            if hrp then
+                                local cpName = CPList[i]
+                                local targetCFrame = CPCache[cpName]
+                                
+                                if targetCFrame then
+                                    -- Paksa server merender map
+                                    pcall(function() lp:RequestStreamAroundAsync(targetCFrame.Position) end)
+                                    
+                                    -- Set CFrame dan Hentikan Momentum (Agar tidak terlempar)
+                                    hrp.AssemblyLinearVelocity = Vector3.zero
+                                    hrp.CFrame = targetCFrame
+                                    
+                                    -- JEDA 0.3 DETIK: Ini SANGAT PENTING. 
+                                    -- Memberi waktu karakter jatuh menyentuh CP dan mesin physics Roblox memicu notifikasi.
+                                    task.wait(0.3)
+                                end
+                            else
+                                task.wait(1) -- Jika karakter mati, tunggu 1 detik
+                            end
+                        end
+                        
+                        -- Jika sudah sampai Summit, tunggu 1 detik sebelum mulai lagi dari Base
+                        if isAutoSequence then task.wait(1) end
+                    end
+                end)
+            else
+                WindUI:Notify({Title="Berhenti", Content="Auto Loop Sequence dimatikan.", Duration=1.5})
             end
         end
     })
