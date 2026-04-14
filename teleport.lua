@@ -22,7 +22,7 @@ return function(WindUI, TeleportTab)
     local isAutoLooping = false
     local isAutoSequence = false
     local isStealthMode = false
-    local isAdd50kSummit = false -- State Injector 50k
+    local isAdd50kSummit = false
 
     -- FUNGSI SERIALISASI
     local function SerializeCPs()
@@ -120,69 +120,71 @@ return function(WindUI, TeleportTab)
     end
 
     -- ==========================================
-    -- FUNGSI GAIB: INJECTOR 50K SUMMIT WINS
+    -- FUNGSI GAIB: INJECTOR SUMMIT WINS (ANTI-FREEZE)
     -- ==========================================
     local function AttemptInject50k(finalCFrame)
         local fireTouch = (typeof(firetouchinterest) == "function" and firetouchinterest) or (getgenv and getgenv().firetouchinterest)
-        local finalPart = nil
         
-        -- Cari part asli dari CFrame (dikurangi 3 stud karena sebelumnya kita simpan +3 ke atas)
+        -- Cari SEMUA part di sekitar Summit yang mungkin merupakan pad kemenangan
+        local winParts = {}
         local searchPos = finalCFrame.Position - Vector3.new(0, 3, 0)
         for _, v in ipairs(workspace:GetDescendants()) do
             if v:IsA("BasePart") then
-                if (v.Position - searchPos).Magnitude < 10 then
-                    finalPart = v
-                    break
+                if (v.Position - searchPos).Magnitude < 20 then
+                    table.insert(winParts, v)
                 end
             end
         end
 
-        WindUI:Notify({Title="Menyuntik...", Content="Sedang mengeksekusi 50.000 klaim Summit. Jangan keluar...", Duration=3})
-        
-        -- Cari RemoteEvent tersembunyi di sekitar part akhir (biasanya untuk ngasih reward)
         local remotes = {}
-        if finalPart and finalPart.Parent then
-            for _, r in ipairs(finalPart.Parent:GetDescendants()) do
+        if #winParts > 0 and winParts[1].Parent then
+            for _, r in ipairs(winParts[1].Parent:GetDescendants()) do
                 if r:IsA("RemoteEvent") then table.insert(remotes, r) end
             end
         end
-        -- Cari juga di ReplicatedStorage (Penyimpanan global server)
+        
+        -- Cari RemoteEvent global yang mengandung kata kunci hadiah
         for _, r in ipairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
             if r:IsA("RemoteEvent") then
                 local rn = string.lower(r.Name)
-                if string.match(rn, "win") or string.match(rn, "summit") or string.match(rn, "reward") or string.match(rn, "finish") then
+                if string.match(rn, "win") or string.match(rn, "summit") or string.match(rn, "reward") or string.match(rn, "finish") or string.match(rn, "claim") or string.match(rn, "give") then
                     table.insert(remotes, r)
                 end
             end
         end
 
+        WindUI:Notify({Title="Menyuntik...", Content="Mengeksekusi Bypass Injector... (Anti-Freeze HP Aman)", Duration=3})
+        
         local char = lp.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         
         if hrp then
-            -- LOOP INJEKSI: 50.000 KALI
-            for i = 1, 50000 do
-                if not isAdd50kSummit then break end -- Bisa dibatalkan jika toggle dimatikan
+            -- Gunakan task.spawn agar game TIDAK PAUSE/FREEZE sama sekali
+            task.spawn(function()
+                local startTime = os.clock()
                 
-                -- Metode 1: Spam Sentuhan (Menipu Script Server "Touched" Event)
-                if finalPart and fireTouch then
-                    pcall(function()
-                        fireTouch(hrp, finalPart, 0) -- Mulai Sentuh
-                        fireTouch(hrp, finalPart, 1) -- Lepas Sentuhan
-                    end)
+                -- Membombardir selama 3.5 detik penuh
+                while isAdd50kSummit and (os.clock() - startTime) < 3.5 do
+                    
+                    if fireTouch then
+                        for _, part in ipairs(winParts) do
+                            pcall(function()
+                                fireTouch(hrp, part, 0) 
+                                fireTouch(hrp, part, 1) 
+                            end)
+                        end
+                    end
+                    
+                    for _, r in ipairs(remotes) do
+                        pcall(function() r:FireServer() end)
+                    end
+                    
+                    -- Jeda kecil 0.05 detik agar Engine Roblox bisa memproses spam dan HP tidak lag
+                    task.wait(0.05) 
                 end
                 
-                -- Metode 2: Spam Sinyal Remote Server
-                for _, r in ipairs(remotes) do
-                    pcall(function() r:FireServer() end)
-                end
-                
-                -- Anti-Crash Client: Jeda sangat singkat setiap 500 klaim agar HP kamu tidak meledak/lag
-                if i % 500 == 0 then
-                    task.wait() 
-                end
-            end
-            WindUI:Notify({Title="Sukses 💉", Content="Suntikan 50.000 Summit/Wins telah ditambahkan!", Duration=4, Icon="check"})
+                WindUI:Notify({Title="Injeksi Selesai 💉", Content="Jika Summit belum naik permanen, server game ini diproteksi Anti-Spam! (Silakan gunakan Auto Sequence).", Duration=5, Icon="info"})
+            end)
         end
     end
 
@@ -277,7 +279,7 @@ return function(WindUI, TeleportTab)
     -- ==========================================
     TeleportTab:Paragraph({
         Title = "Teleport (Permanent Cache)",
-        Desc = "Dilengkapi Smart Logic V2, Stealth Mode, dan Injector 50.000 Wins!",
+        Desc = "Dilengkapi Smart Logic V2, Stealth Mode, dan Injector Wins!",
         Color = Color3.fromHex("#F89B29")
     })
 
@@ -340,7 +342,7 @@ return function(WindUI, TeleportTab)
         Callback = function(state)
             isAdd50kSummit = state
             if isAdd50kSummit then
-                WindUI:Notify({Title="Injector Aktif", Content="Akan menyuntik 50.000 Wins otomatis setiap mencapai Summit!", Duration=3, Icon="check"})
+                WindUI:Notify({Title="Injector Aktif", Content="Mengeksekusi Bypass Injeksi otomatis saat mencapai Summit!", Duration=3, Icon="check"})
             end
         end
     })
@@ -405,11 +407,12 @@ return function(WindUI, TeleportTab)
                                 SafeRequestStream(lastCFrame.Position)
                                 hrp.CFrame = lastCFrame
                                 hasResetBase = false 
-                                task.wait(1) -- Beri waktu sedikit sebelum injeksi
+                                task.wait(1) 
 
-                                -- INJEKSI 50K WINS
+                                -- INJEKSI 50K WINS (Memberi waktu sebelum mulai ke Base lagi)
                                 if isAdd50kSummit then
                                     AttemptInject50k(lastCFrame)
+                                    task.wait(4) -- Tunggu proses Background Injeksi selesai
                                 else
                                     task.wait(4)
                                 end
@@ -508,6 +511,7 @@ return function(WindUI, TeleportTab)
                             -- JIKA MENCAPAI SUMMIT (CP TERAKHIR) & INJEKSI AKTIF
                             if currentIndex == #CPList and isAdd50kSummit then
                                 AttemptInject50k(targetCFrame)
+                                task.wait(4) -- Tunggu proses Background Injeksi selesai
                             end
 
                             currentIndex = currentIndex + 1
