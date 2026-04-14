@@ -118,10 +118,10 @@ return function(WindUI, TeleportTab)
     end
 
     -- ==========================================
-    -- FUNGSI GAIB: KLIK UI RESET CHECKPOINT
+    -- FUNGSI GAIB: MULTI-STAGE UI CLICKER (YES/NO)
     -- ==========================================
     local function AttemptResetCheckpointGameUI()
-        -- 1. Scan dan klik Remote Event game (Jika dev gamenya pakai ini)
+        -- 1. Scan Remote Event (Cepat)
         for _, v in ipairs(game:GetDescendants()) do
             if v:IsA("RemoteEvent") then
                 local name = string.lower(v.Name)
@@ -131,21 +131,37 @@ return function(WindUI, TeleportTab)
             end
         end
 
-        -- 2. Scan UI di layar HP kamu secara virtual dan Klik Otomatis
+        -- 2. Sistem Klik Layar UI Bertahap (Multi-Stage)
         local fireClick = getgenv().firesignal or firesignal
-        if fireClick then
-            local pg = lp:FindFirstChild("PlayerGui")
-            if pg then
+        local pg = lp:FindFirstChild("PlayerGui")
+        
+        if fireClick and pg then
+            -- Fungsi pembantu untuk memindai dan mengeklik tombol berdasarkan kata kunci
+            local function scanAndClick(keywords)
+                local clicked = false
                 for _, gui in ipairs(pg:GetDescendants()) do
                     if (gui:IsA("TextButton") or gui:IsA("ImageButton")) and gui.Visible then
                         local text = string.lower(gui:IsA("TextButton") and gui.Text or gui.Name)
-                        -- Cari tombol berunsur kata reset atau kembali
-                        if string.match(text, "reset") or string.match(text, "basecamp") or string.match(text, "restart") then
-                            pcall(function() fireClick(gui.MouseButton1Click) end)
-                            pcall(function() fireClick(gui.Activated) end)
+                        for _, kw in ipairs(keywords) do
+                            if string.match(text, kw) then
+                                pcall(function() fireClick(gui.MouseButton1Click) end)
+                                pcall(function() fireClick(gui.Activated) end)
+                                clicked = true
+                            end
                         end
                     end
                 end
+                return clicked
+            end
+
+            -- TAHAP 1: Klik tombol Reset / Basecamp
+            local clickedReset = scanAndClick({"reset", "basecamp", "restart"})
+            
+            -- TAHAP 2: Jika tombol reset berhasil diklik, tunggu pop-up lalu klik YES/Confirm
+            if clickedReset then
+                task.wait(0.3) -- Jeda animasi pop-up konfirmasi muncul
+                scanAndClick({"yes", "confirm", "ya", "ok", "setuju", "sure"})
+                task.wait(0.2) -- Jeda server mereset data kita
             end
         end
     end
@@ -256,7 +272,7 @@ return function(WindUI, TeleportTab)
         end
     })
 
-    -- FITUR 2: AUTO LOOP SEQUENCE (SMART RESUME & AUTO RESET)
+    -- FITUR 2: AUTO LOOP SEQUENCE (SMART RESUME & AUTO YES/NO)
     TeleportTab:Toggle({
         Title = "▶️ Auto Loop Sequence (Smart Resume)",
         Default = false,
@@ -305,10 +321,10 @@ return function(WindUI, TeleportTab)
                             local cHrp = cChar and cChar:FindFirstChild("HumanoidRootPart")
                             
                             if cHrp then
-                                -- JIKA BERADA DI BASE (Index 1) -> TRIGGER AUTO RESET
+                                -- JIKA BERADA DI BASE (Index 1) -> TRIGGER AUTO RESET YES/NO
                                 if i == 1 then
                                     AttemptResetCheckpointGameUI()
-                                    task.wait(0.5) -- Beri waktu sistem UI memproses reset
+                                    task.wait(0.5) -- Beri waktu sistem UI dan server memproses reset total
                                 end
 
                                 local targetCFrame = CPCache[CPList[i]]
