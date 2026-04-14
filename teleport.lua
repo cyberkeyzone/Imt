@@ -12,15 +12,16 @@ return function(WindUI, TeleportTab)
         pcall(function() makefolder(cacheFolderName) end) 
     end
     
-    -- Nama file unik untuk setiap game/map
     local saveFileName = cacheFolderName .. "/" .. tostring(currentPlaceId) .. "_CPs.json"
 
     local CPCache = {} 
     local CPList = {}  
     local selectedCP = ""
     local CPDropdown
+    
+    local isAutoLooping = false -- State untuk Auto Farm
 
-    -- FUNGSI SERIALISASI (Mengubah CFrame jadi teks untuk disimpan)
+    -- FUNGSI SERIALISASI
     local function SerializeCPs()
         local dataToSave = {}
         for name, cf in pairs(CPCache) do
@@ -37,7 +38,6 @@ return function(WindUI, TeleportTab)
         return loadedData
     end
 
-    -- FUNGSI SAVE & LOAD
     local function SaveCacheToDevice()
         if writefile then
             local data = SerializeCPs()
@@ -60,20 +60,38 @@ return function(WindUI, TeleportTab)
     end
 
     -- ==========================================
-    -- FUNGSI UPDATE UI & DETEKSI OTOMATIS
+    -- FUNGSI SMART SORTING & UPDATE UI
     -- ==========================================
+    -- Algoritma untuk memastikan Base selalu di atas dan Summit selalu di bawah
+    local function GetCPWeight(name)
+        local lowerName = string.lower(name)
+        if string.match(lowerName, "spawn") or string.match(lowerName, "base") or string.match(lowerName, "start") or name == "0" or name == "CP 0" then
+            return -99999 -- Bobot terkecil, pasti paling atas
+        elseif string.match(lowerName, "summit") or string.match(lowerName, "end") or string.match(lowerName, "win") or string.match(lowerName, "finish") then
+            return 99999 -- Bobot terbesar, pasti paling bawah
+        end
+
+        local num = tonumber(string.match(name, "%d+"))
+        if num then return num end
+
+        return 0 
+    end
+
     local function UpdateDropdown()
         CPList = {}
         for name, _ in pairs(CPCache) do
             table.insert(CPList, name)
         end
         
-        -- Mengurutkan nama CP agar rapi (CP 1, CP 2, CP 10, dst)
+        -- Mengurutkan nama CP menggunakan Smart Sorting
         table.sort(CPList, function(a, b)
-            local numA = tonumber(string.match(a, "%d+"))
-            local numB = tonumber(string.match(b, "%d+"))
-            if numA and numB then return numA < numB end
-            return a < b
+            local weightA = GetCPWeight(a)
+            local weightB = GetCPWeight(b)
+
+            if weightA ~= weightB then
+                return weightA < weightB
+            end
+            return a < b -- Jika bobot sama, urutkan sesuai abjad
         end)
         
         if #CPList == 0 then table.insert(CPList, "Belum ada CP terdeteksi") end
@@ -111,10 +129,9 @@ return function(WindUI, TeleportTab)
             local cpName = partName
             if tonumber(cpName) then cpName = "CP " .. cpName end
             
-            -- Jika CP BARU ditemukan, masukkan ke cache lalu SIMPAN PERMANEN
             if not CPCache[cpName] then
                 CPCache[cpName] = part.CFrame + Vector3.new(0, 3, 0)
-                SaveCacheToDevice() -- Menyimpan secara diam-diam ke HP
+                SaveCacheToDevice() 
                 UpdateDropdown()
             end
         end
@@ -123,7 +140,6 @@ return function(WindUI, TeleportTab)
     -- ==========================================
     -- INISIALISASI MESIN (BYPASS & LOAD)
     -- ==========================================
-    -- 1. Coba muat memori masa lalu dari penyimpanan HP
     local isLoaded = LoadCacheFromDevice()
     if isLoaded then
         task.delay(1, function()
@@ -131,7 +147,6 @@ return function(WindUI, TeleportTab)
         end)
     end
 
-    -- 2. Deep Scan map yang ada saat ini
     task.spawn(function()
         for _, part in ipairs(workspace:GetDescendants()) do
             pcall(function() ProcessPart(part) end)
@@ -139,7 +154,6 @@ return function(WindUI, TeleportTab)
         UpdateDropdown()
     end)
 
-    -- 3. Auto-Hook (Menangkap CP baru saat kita berjalan mengeksplorasi map)
     workspace.DescendantAdded:Connect(function(part)
         pcall(function() ProcessPart(part) end)
     end)
@@ -149,7 +163,7 @@ return function(WindUI, TeleportTab)
     -- ==========================================
     TeleportTab:Paragraph({
         Title = "Teleport (Permanent Cache)",
-        Desc = "Setiap Checkpoint yang pernah terdeteksi akan disimpan secara permanen di HP kamu. Saat keluar masuk game, data CP tidak akan hilang!",
+        Desc = "Checkpoint disimpan otomatis secara permanen. Gunakan fitur Auto Loop untuk auto-farming otomatis dari Base ke Summit!",
         Color = Color3.fromHex("#F89B29")
     })
 
@@ -163,10 +177,8 @@ return function(WindUI, TeleportTab)
         end
     })
 
-    TeleportTab:Divider()
-
     TeleportTab:Button({
-        Title = "⚡ Teleport ke Checkpoint",
+        Title = "⚡ Teleport Manual",
         Callback = function()
             if selectedCP == "" or selectedCP == "Pilih CP" or selectedCP == "Belum ada CP terdeteksi" then
                 return WindUI:Notify({Title="Error", Content="Pilih Checkpoint terlebih dahulu!", Duration=2, Icon="x"})
@@ -178,9 +190,7 @@ return function(WindUI, TeleportTab)
             if hrp then
                 local targetCFrame = CPCache[selectedCP]
                 if targetCFrame then
-                    -- Bypass StreamingEnabled: Paksa server memuat map tujuan
                     pcall(function() lp:RequestStreamAroundAsync(targetCFrame.Position) end)
-                    
                     hrp.CFrame = targetCFrame
                     WindUI:Notify({Title="Zhoosh!", Content="Teleport ke " .. selectedCP, Duration=1.5})
                 else
@@ -191,6 +201,66 @@ return function(WindUI, TeleportTab)
             end
         end
     })
+
+    TeleportTab:Divider()
+
+    -- FITUR BARU: AUTO LOOP TELEPORT (FARM)
+    TeleportTab:Toggle({
+        Title = "🔁 Auto Loop Teleport (Farm)",
+        Default = false,
+        Callback = function(state)
+            isAutoLooping = state
+            
+            if isAutoLooping then
+                if #CPList < 2 or CPList[1] == "Belum ada CP terdeteksi" then
+                    WindUI:Notify({Title="Gagal", Content="Minimal butuh 2 Checkpoint untuk melakukan Auto Loop!", Duration=3, Icon="x"})
+                    isAutoLooping = false
+                    return
+                end
+                
+                WindUI:Notify({Title="Auto Loop", Content="Memulai farming dari titik Awal ke Akhir...", Duration=2, Icon="check"})
+                
+                task.spawn(function()
+                    while isAutoLooping do
+                        local char = lp.Character
+                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                        
+                        if hrp then
+                            -- Ambil CP Pertama dan Terakhir berdasarkan Smart Sorting
+                            local firstCPName = CPList[1]
+                            local lastCPName = CPList[#CPList]
+                            
+                            local firstCFrame = CPCache[firstCPName]
+                            local lastCFrame = CPCache[lastCPName]
+                            
+                            if firstCFrame and lastCFrame then
+                                -- 1. Teleport ke Awal (Base/0)
+                                pcall(function() lp:RequestStreamAroundAsync(firstCFrame.Position) end)
+                                hrp.CFrame = firstCFrame
+                                task.wait(0.5) -- Delay 0.5 Detik
+                                
+                                -- Pastikan belum dimatikan saat delay
+                                if not isAutoLooping then break end
+                                
+                                -- 2. Teleport ke Akhir (Summit/Max)
+                                pcall(function() lp:RequestStreamAroundAsync(lastCFrame.Position) end)
+                                hrp.CFrame = lastCFrame
+                                task.wait(0.5) -- Delay 0.5 Detik
+                            else
+                                task.wait(0.5)
+                            end
+                        else
+                            task.wait(1) -- Tunggu jika karakter mati/belum spawn
+                        end
+                    end
+                end)
+            else
+                WindUI:Notify({Title="Berhenti", Content="Auto Loop dimatikan.", Duration=1.5})
+            end
+        end
+    })
+
+    TeleportTab:Divider()
 
     TeleportTab:Button({
         Title = "🗑️ Hapus Data CP Permanen",
