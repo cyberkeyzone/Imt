@@ -1,17 +1,18 @@
-Return function(WindUI, RecordingTab)
+return function(WindUI, RecordingTab)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
     local HttpService = game:GetService("HttpService")
     local UserInputService = game:GetService("UserInputService")
     local TweenService = game:GetService("TweenService")
     local CoreGui = game:GetService("CoreGui")
+    
     local lp = Players.LocalPlayer
     local currentPlaceId = game.PlaceId 
 
     -- ==========================================
     -- VARIABEL SISTEM & STATE
     -- ==========================================
-    local isUnlocked = (lp.Name == "myzzkey") 
+    local isUnlocked = (lp and lp.Name == "myzzkey") or false
     local RecordsDB = {}
     local availableRecords = {}
     local currentRecordIndex = 1
@@ -29,16 +30,52 @@ Return function(WindUI, RecordingTab)
     local playbackIndex = 1
     local appendTargetFile = nil 
     
-    -- Variabel Mesin Waktu (Anti-Lag & Presisi Tinggi)
     local recordingStartTime = 0
     local playbackStartTime = 0
-    local autoWalkStartTime = 0 -- FIX: Ditambahkan untuk mencegah macet saat AutoWalk
+    local autoWalkStartTime = 0
 
     local folderName = "Recording"
     if isfolder and not isfolder(folderName) then makefolder(folderName) end
 
     -- ==========================================
-    -- FUNGSI INTERNAL DATA
+    -- INISIALISASI WADAH FLOATING UI (DI AWAL)
+    -- ==========================================
+    local FloatingUI = Instance.new("ScreenGui")
+    FloatingUI.Name = "SYNC_DynamicPanel"
+    FloatingUI.ResetOnSpawn = false
+    FloatingUI.Enabled = false
+    
+    -- Mencegah error jika CoreGui diblokir oleh executor
+    local hasCoreGui = pcall(function() return CoreGui.Name end)
+    local uiParent = (gethui and gethui()) or (hasCoreGui and CoreGui) or (lp and lp:FindFirstChild("PlayerGui"))
+    if uiParent then
+        FloatingUI.Parent = uiParent
+    end
+
+    -- ==========================================
+    -- WIND UI SETUP (DIPINDAH KE ATAS AGAR TAB TIDAK KOSONG)
+    -- ==========================================
+    pcall(function()
+        RecordingTab:Paragraph({
+            Title = "Kapsul Dynamic Record",
+            Desc = "Sistem Recording telah dipindahkan ke Floating Panel. Klik tombol di bawah untuk menampilkannya.",
+            Color = Color3.fromHex("#0F7BFF")
+        })
+
+        RecordingTab:Button({
+            Title = "🎛️ Buka / Tutup Kapsul",
+            Icon = "monitor",
+            Callback = function()
+                if not isUnlocked then 
+                    return WindUI:Notify({Title="Akses Ditolak", Content="Hanya untuk myzzkey!", Duration=2}) 
+                end
+                FloatingUI.Enabled = not FloatingUI.Enabled
+            end
+        })
+    end)
+
+    -- ==========================================
+    -- FUNGSI INTERNAL DATA (LEBIH AMAN)
     -- ==========================================
     local function SerializeData(framesArray)
         local serializedFrames = {}
@@ -61,11 +98,17 @@ Return function(WindUI, RecordingTab)
         local framesToProcess = jsonData.Frames or jsonData
         
         for i, frame in ipairs(framesToProcess) do
+            -- Mencegah error jika data JSON lama tidak memiliki "state"
+            local parsedState = Enum.HumanoidStateType.Running
+            if frame.state then
+                pcall(function() parsedState = Enum.HumanoidStateType[frame.state] end)
+            end
+            
             deserializedFrames[i] = {
                 time = frame.time or (i * 0.016), 
-                cframe = CFrame.new(unpack(frame.cframe)),
-                vel = Vector3.new(unpack(frame.vel)),
-                state = Enum.HumanoidStateType[frame.state]
+                cframe = frame.cframe and CFrame.new(unpack(frame.cframe)) or CFrame.new(),
+                vel = frame.vel and Vector3.new(unpack(frame.vel)) or Vector3.zero,
+                state = parsedState
             }
         end
         return deserializedFrames
@@ -137,16 +180,8 @@ Return function(WindUI, RecordingTab)
     end
 
     -- ==========================================
-    -- CUSTOM FLOATING UI (DYNAMIC CAPSULE)
+    -- BUILD KONTEN FLOATING UI
     -- ==========================================
-    local FloatingUI = Instance.new("ScreenGui")
-    FloatingUI.Name = "SYNC_DynamicPanel"
-    FloatingUI.ResetOnSpawn = false
-    FloatingUI.Enabled = false
-    
-    local uiParent = (gethui and gethui()) or (pcall(function() return CoreGui.Name end) and CoreGui) or lp.PlayerGui
-    FloatingUI.Parent = uiParent
-
     local MainFrame = Instance.new("Frame")
     MainFrame.Size = UDim2.new(0, 250, 0, 75) 
     MainFrame.Position = UDim2.new(0.5, -125, 0.8, -80)
@@ -470,7 +505,7 @@ Return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- 🕒 RECORDING ENGINE (OS.CLOCK)
+    -- 🕒 RECORDING ENGINE
     -- ==========================================
     RecBtn.MouseButton1Click:Connect(function()
         if not isRecording then
@@ -523,7 +558,7 @@ Return function(WindUI, RecordingTab)
     end)
 
     -- ==========================================
-    -- 🕒 STEPPED PLAYBACK ENGINE (SUPER SMOOTH)
+    -- 🕒 PLAYBACK ENGINE
     -- ==========================================
     local function StartPlaybackLoop(data)
         if playConn then playConn:Disconnect() end
@@ -536,22 +571,18 @@ Return function(WindUI, RecordingTab)
             if not hrp or not hum then return end
 
             if isAutoWalkingToStart then
-                -- Fase Auto-Walk: Bergerak normal pakai physics bawaan
                 local targetPos = data[playbackIndex].cframe.Position
                 local dist = (hrp.Position - targetPos).Magnitude
                 
-                -- FIX: Beri batas waktu (3 detik) agar tidak macet/stuck selamanya
                 if dist > 3 and (os.clock() - autoWalkStartTime) < 3 then
                     hum:MoveTo(targetPos)
                     StatusLbl.Text = string.format(" AutoWalk: %d Studs", math.floor(dist))
                 else
-                    -- Jika kelamaan atau sudah dekat, paksa teleport langsung ke titik awal agar pasti jalan
                     hrp.CFrame = data[playbackIndex].cframe
                     isAutoWalkingToStart = false 
                     playbackStartTime = os.clock() - (data[playbackIndex].time or 0)
                 end
             else
-                -- Fase Playback: Injeksi CFrame & Velocity Murni
                 local t = os.clock() - playbackStartTime
                 
                 while data[playbackIndex + 1] and t >= data[playbackIndex + 1].time do
@@ -604,7 +635,7 @@ Return function(WindUI, RecordingTab)
         playbackIndex = hrp and FindNearestFrameIndex(data, hrp.Position) or 1
         
         isAutoWalkingToStart = true 
-        autoWalkStartTime = os.clock() -- FIX: Mulai timer mencegah stuck
+        autoWalkStartTime = os.clock() 
         StartPlaybackLoop(data)
     end)
 
@@ -672,7 +703,6 @@ Return function(WindUI, RecordingTab)
             local sliderX = SliderTrack.AbsolutePosition.X
             local sliderSize = SliderTrack.AbsoluteSize.X
             
-            -- FIX: Cegah pembagian angka dengan 0 jika size slider sedang tidak wajar (Penyebab Black Screen/NaN)
             if sliderSize <= 0 then sliderSize = 1 end
             
             local percent = math.clamp((mouseX - sliderX) / sliderSize, 0, 1)
@@ -681,7 +711,6 @@ Return function(WindUI, RecordingTab)
             local selectedFile = availableRecords[currentRecordIndex]
             local data = RecordsDB[selectedFile]
             if data and #data > 0 then
-                -- FIX: Pastikan index selalu di dalam range agar tidak memanggil tabel kosong
                 playbackIndex = math.clamp(math.floor(percent * #data), 1, #data)
                 StatusLbl.Text = string.format(" ⏸ Preview: %d%%", math.floor(percent * 100))
                 
@@ -703,9 +732,6 @@ Return function(WindUI, RecordingTab)
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum then return end
 
-        -- FIX: Menggunakan playbackIndex langsung dari slider!
-        -- Saya telah menghapus FindNearestFrameIndex agar potongan 100% presisi dan tidak ngacak
-        
         appendTargetFile = selectedFile
 
         local newData = {}
@@ -778,24 +804,7 @@ Return function(WindUI, RecordingTab)
         StatusLbl.Text = " 💾 Timpa: " .. selectedFile
     end)
 
-    -- ==========================================
-    -- WIND UI SETUP
-    -- ==========================================
-    RecordingTab:Paragraph({
-        Title = "Kapsul Dynamic Record",
-        Desc = "Sistem Recording telah dipindahkan ke Floating Panel. Klik tombol di bawah untuk menampilkannya.",
-        Color = Color3.fromHex("#0F7BFF")
-    })
-
-    RecordingTab:Button({
-        Title = "🎛️ Buka / Tutup Kapsul",
-        Icon = "monitor",
-        Callback = function()
-            if not isUnlocked then return WindUI:Notify({Title="Akses Ditolak", Content="Hanya untuk myzzkey!", Duration=2}) end
-            FloatingUI.Enabled = not FloatingUI.Enabled
-        end
-    })
-
+    -- Eksekusi awal saat dibuka
     LoadAllRecords()
     UpdatePanelUI()
 end
