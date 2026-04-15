@@ -1,4 +1,4 @@
-return function(WindUI, RecordingTab)
+Return function(WindUI, RecordingTab)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
     local HttpService = game:GetService("HttpService")
@@ -32,6 +32,7 @@ return function(WindUI, RecordingTab)
     -- Variabel Mesin Waktu (Anti-Lag & Presisi Tinggi)
     local recordingStartTime = 0
     local playbackStartTime = 0
+    local autoWalkStartTime = 0 -- FIX: Ditambahkan untuk mencegah macet saat AutoWalk
 
     local folderName = "Recording"
     if isfolder and not isfolder(folderName) then makefolder(folderName) end
@@ -523,12 +524,10 @@ return function(WindUI, RecordingTab)
 
     -- ==========================================
     -- 🕒 STEPPED PLAYBACK ENGINE (SUPER SMOOTH)
-    -- Mencegah Jitter Fisika & Glitch Kepala
     -- ==========================================
     local function StartPlaybackLoop(data)
         if playConn then playConn:Disconnect() end
         
-        -- Menggunakan Stepped untuk Bypass Physics Engine
         playConn = RunService.Stepped:Connect(function()
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -540,10 +539,14 @@ return function(WindUI, RecordingTab)
                 -- Fase Auto-Walk: Bergerak normal pakai physics bawaan
                 local targetPos = data[playbackIndex].cframe.Position
                 local dist = (hrp.Position - targetPos).Magnitude
-                if dist > 3 then
+                
+                -- FIX: Beri batas waktu (3 detik) agar tidak macet/stuck selamanya
+                if dist > 3 and (os.clock() - autoWalkStartTime) < 3 then
                     hum:MoveTo(targetPos)
                     StatusLbl.Text = string.format(" AutoWalk: %d Studs", math.floor(dist))
                 else
+                    -- Jika kelamaan atau sudah dekat, paksa teleport langsung ke titik awal agar pasti jalan
+                    hrp.CFrame = data[playbackIndex].cframe
                     isAutoWalkingToStart = false 
                     playbackStartTime = os.clock() - (data[playbackIndex].time or 0)
                 end
@@ -559,17 +562,13 @@ return function(WindUI, RecordingTab)
                 local nextFrame = data[playbackIndex + 1]
 
                 if nextFrame then
-                    -- LERP ENGINE (Menghaluskan transisi antar frame)
                     local timeDiff = nextFrame.time - currentFrame.time
                     if timeDiff <= 0 then timeDiff = 0.001 end
                     local alpha = math.clamp((t - currentFrame.time) / timeDiff, 0, 1)
                     
-                    -- SET CFRAME & VELOCITY (Tanpa Anchored, tanpa hum:Move())
-                    -- Hal ini membuat Roblox Engine menganggap karakter sedang berlari natural!
                     hrp.CFrame = currentFrame.cframe:Lerp(nextFrame.cframe, alpha)
                     hrp.AssemblyLinearVelocity = currentFrame.vel:Lerp(nextFrame.vel, alpha)
                     
-                    -- Sinkronisasi State (Jumping, Falling, Running)
                     if hum:GetState() ~= currentFrame.state then 
                         hum:ChangeState(currentFrame.state) 
                     end
@@ -603,7 +602,9 @@ return function(WindUI, RecordingTab)
         local char = lp.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         playbackIndex = hrp and FindNearestFrameIndex(data, hrp.Position) or 1
+        
         isAutoWalkingToStart = true 
+        autoWalkStartTime = os.clock() -- FIX: Mulai timer mencegah stuck
         StartPlaybackLoop(data)
     end)
 
@@ -619,7 +620,7 @@ return function(WindUI, RecordingTab)
             local char = lp.Character
             if char then
                 local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.Anchored = true end -- Bekukan agar mudah diedit
+                if hrp then hrp.Anchored = true end 
             end
             
             StatusLbl.Text = " ⏸️ Editor"
@@ -632,7 +633,7 @@ return function(WindUI, RecordingTab)
             local char = lp.Character
             if char then
                 local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.Anchored = false end -- Lepas bekuan saat resume
+                if hrp then hrp.Anchored = false end 
             end
             
             playbackStartTime = os.clock() - (data[playbackIndex].time or 0)
@@ -671,13 +672,17 @@ return function(WindUI, RecordingTab)
             local sliderX = SliderTrack.AbsolutePosition.X
             local sliderSize = SliderTrack.AbsoluteSize.X
             
+            -- FIX: Cegah pembagian angka dengan 0 jika size slider sedang tidak wajar (Penyebab Black Screen/NaN)
+            if sliderSize <= 0 then sliderSize = 1 end
+            
             local percent = math.clamp((mouseX - sliderX) / sliderSize, 0, 1)
             SliderFill.Size = UDim2.new(percent, 0, 1, 0)
             
             local selectedFile = availableRecords[currentRecordIndex]
             local data = RecordsDB[selectedFile]
-            if data then
-                playbackIndex = math.max(1, math.floor(percent * #data))
+            if data and #data > 0 then
+                -- FIX: Pastikan index selalu di dalam range agar tidak memanggil tabel kosong
+                playbackIndex = math.clamp(math.floor(percent * #data), 1, #data)
                 StatusLbl.Text = string.format(" ⏸ Preview: %d%%", math.floor(percent * 100))
                 
                 local char = lp.Character
@@ -698,8 +703,9 @@ return function(WindUI, RecordingTab)
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hrp or not hum then return end
 
-        local bestIndex = FindNearestFrameIndex(data, hrp.Position)
-        playbackIndex = bestIndex
+        -- FIX: Menggunakan playbackIndex langsung dari slider!
+        -- Saya telah menghapus FindNearestFrameIndex agar potongan 100% presisi dan tidak ngacak
+        
         appendTargetFile = selectedFile
 
         local newData = {}
@@ -714,7 +720,6 @@ return function(WindUI, RecordingTab)
         
         countdownActive = true
         
-        -- Bekukan selama persiapan rekam sambungan
         task.spawn(function()
             hrp.Anchored = true
             hrp.CFrame = data[playbackIndex].cframe
@@ -736,13 +741,11 @@ return function(WindUI, RecordingTab)
             countdownActive = false
             StatusLbl.Text = " 🔴 Merekam Sambungan..."
 
-            -- Lepaskan anchor agar physics roblox mengambil alih murni
             hrp.Anchored = false
             hrp.CFrame = data[playbackIndex].cframe
             hrp.AssemblyLinearVelocity = data[playbackIndex].vel
             hum:ChangeState(data[playbackIndex].state)
 
-            -- Resync Start Time agar hitungan frame mulus
             recordingStartTime = os.clock() - (data[playbackIndex].time or 0)
 
             recConn = RunService.Heartbeat:Connect(function()
