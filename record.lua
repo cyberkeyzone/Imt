@@ -563,7 +563,8 @@ return function(WindUI, RecordingTab)
     local function StartPlaybackLoop(data)
         if playConn then playConn:Disconnect() end
         
-        playConn = RunService.Stepped:Connect(function()
+        -- Menggunakan Heartbeat agar sinkron 1:1 dengan fase Recording
+        playConn = RunService.Heartbeat:Connect(function()
             local char = lp.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid") 
@@ -598,10 +599,28 @@ return function(WindUI, RecordingTab)
                     local alpha = math.clamp((t - currentFrame.time) / timeDiff, 0, 1)
                     
                     hrp.CFrame = currentFrame.cframe:Lerp(nextFrame.cframe, alpha)
-                    hrp.AssemblyLinearVelocity = currentFrame.vel:Lerp(nextFrame.vel, alpha)
                     
-                    if hum:GetState() ~= currentFrame.state then 
-                        hum:ChangeState(currentFrame.state) 
+                    local lerpedVel = currentFrame.vel:Lerp(nextFrame.vel, alpha)
+                    hrp.AssemblyLinearVelocity = lerpedVel
+                    
+                    -- FIX 1: Pancing Sistem Animasi & Foot IK agar aktif natural
+                    local flatVel = Vector3.new(lerpedVel.X, 0, lerpedVel.Z)
+                    if flatVel.Magnitude > 0.5 then
+                        hum:Move(flatVel.Unit, false) -- Memberi perintah jalan palsu
+                    else
+                        hum:Move(Vector3.zero, false)
+                    end
+                    
+                    -- FIX 2: Filter Humanoid State agar animasi mendarat tidak rusak (glitch)
+                    local currentState = hum:GetState()
+                    local recordedState = currentFrame.state
+                    if currentState ~= recordedState then 
+                        -- Jangan spam ChangeState terus-menerus, fokus pada transisi krusial di udara
+                        if recordedState == Enum.HumanoidStateType.Jumping or 
+                           recordedState == Enum.HumanoidStateType.Freefall or 
+                           recordedState == Enum.HumanoidStateType.Landed then
+                            hum:ChangeState(recordedState) 
+                        end
                     end
 
                     local percent = math.floor((playbackIndex / #data) * 100)
@@ -609,6 +628,7 @@ return function(WindUI, RecordingTab)
                     SliderFill.Size = UDim2.new(playbackIndex / #data, 0, 1, 0)
                 else
                     if playConn then playConn:Disconnect() end
+                    hum:Move(Vector3.zero, false)
                     hum:ChangeState(Enum.HumanoidStateType.Running)
                     hrp.AssemblyLinearVelocity = Vector3.zero
                     
